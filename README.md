@@ -129,4 +129,8 @@ marché ivoirienne de produits numériques, où il tourne en production.
 
 ## Licence
 
-À décider avant publication.
+MIT — voir [LICENSE](LICENSE).
+
+Le paquet reste `private` : la licence dit ce qu'on a le droit de faire du code,
+pas qu'il soit prêt à être publié sur npm. Les niveaux 2 et 3 n'existent pas
+encore, et une version 0.1.0 publiée se reprend mal.

@@ -9,15 +9,25 @@
     ".": "./src/moteur.ts",
     "./cycle": "./src/cycle.ts",
     "./etats": "./src/etats.ts",
-    "./ports": "./src/ports.ts"
+    "./ports": "./src/ports.ts",
+    "./gsm7": "./src/gsm7.ts"
   },
-  "files": ["src", "README.md"],
+  "files": [
+    "src",
+    "README.md"
+  ],
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
-  "keywords": ["abonnement", "subscription", "mobile-money", "afrique", "xof"],
-  "license": "UNLICENSED",
+  "keywords": [
+    "abonnement",
+    "subscription",
+    "mobile-money",
+    "afrique",
+    "xof"
+  ],
+  "license": "MIT",
   "private": true,
   "devDependencies": {
     "typescript": "^5.9.3",
