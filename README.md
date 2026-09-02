@@ -24,14 +24,19 @@ un autre mécanisme.
 Il rappelle, et l'abonné valide.
 
 ```
-         échéance                    accès coupé
-             │                            │
-  ───────────┼────────────────────────────┼──────────────►
-      J-3    J0        J+2       J+5      J+7
-       │      │         │         │        │
-    courriel  courriel  SMS       SMS   suspension
-    + push    + push    + push
+                     échéance                 accès coupé
+                         │                         │
+  ───────┬───────────┬───┼──────┬─────────┬────────┼──────►
+        J-7         J-1  J0    J+2       J+5      J+7
+         │           │          │         │        │
+      courriel    courriel     push      SMS   suspension
+      + push      + push       + SMS
 ```
+
+Une semaine avant, puis la veille : assez tôt pour s'organiser, assez tard pour
+ne pas être oublié. `PREAVIS_JOURS` est **dérivé** du premier palier — écrit en
+dur, un palier plus avancé que lui serait noté dans le code et jamais envoyé,
+sans la moindre erreur pour le dire.
 
 Entre l'échéance et la coupure vit la **grâce** : l'abonné garde son accès
 pendant qu'on le relance. Sans elle, quelqu'un parti en week-end perd son

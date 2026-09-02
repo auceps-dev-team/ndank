@@ -38,14 +38,6 @@ export interface Abonnement {
 }
 
 /**
- * Combien de jours avant l'échéance on commence à s'inquiéter.
- *
- * Trois : assez tôt pour qu'un abonné puisse s'organiser, assez tard pour que
- * le rappel ne soit pas oublié avant d'être utile.
- */
-export const PREAVIS_JOURS = 3;
-
-/**
  * Où en est cet abonnement, maintenant.
  *
  * L'ordre des tests n'est pas indifférent. La résiliation passe en premier :
@@ -121,11 +113,30 @@ export type Geste =
  * Les jours sont relatifs à l'échéance. Négatif = avant.
  */
 export const PALIERS: readonly { jour: number; canaux: string[] }[] = [
-  { jour: -3, canaux: ["courriel", "push"] },
-  { jour: 0, canaux: ["courriel", "push"] },
+  /** La relance de fond, une semaine avant. Elle laisse le temps d'agir. */
+  { jour: -7, canaux: ["courriel", "push"] },
+  /** Le rappel de la veille, pour ceux qui ont remis à plus tard. */
+  { jour: -1, canaux: ["courriel", "push"] },
   { jour: 2, canaux: ["push", "sms"] },
   { jour: 5, canaux: ["sms"] },
 ];
+
+/**
+ * À partir de quand on commence à s'inquiéter.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * DÉRIVÉ, ET SURTOUT PAS ÉCRIT EN DUR
+ *
+ * `gesteDuJour` rend `RIEN` tant que l'état est `ACTIVE`. Si ce nombre était
+ * plus petit que le premier palier, ce palier serait **écrit et jamais
+ * envoyé** : l'état resterait `ACTIVE` le jour où la relance est due, et le
+ * moteur passerait son chemin. Aucune erreur, aucun journal — juste une
+ * relance qui n'existe pas.
+ *
+ * Le dériver rend le décalage impossible : avancer le premier palier avance
+ * l'état avec lui.
+ */
+export const PREAVIS_JOURS = Math.abs(PALIERS[0]?.jour ?? 0);
 
 /**
  * Décide du geste, sans rien exécuter.
@@ -174,4 +185,34 @@ export function gesteDuJour(
 /** Les canaux du palier, dans l'ordre où il faut les essayer. */
 export function canauxDuPalier(palier: number): readonly string[] {
   return PALIERS[palier]?.canaux ?? [];
+}
+
+/**
+ * Ce qu'un abonné recevra, dit en clair.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * L'ÉCRAN NE DOIT PAS POUVOIR MENTIR
+ *
+ * Le réglage des notifications annonce ce qu'on enverra. Écrire ces libellés
+ * à la main dans l'écran ferait promettre « RELANCE J−7 » à quelqu'un qu'on
+ * relance à J−3 — un mensonge que personne ne verrait, sauf l'abonné, une
+ * fois, le jour où le message n'arrive pas.
+ *
+ * On les dérive donc de la table. Avancer un palier change l'écran avec lui.
+ *
+ * Seuls les paliers où la notification passe sont listés : promettre sur ce
+ * canal une relance qui ne part qu'en SMS serait la même faute.
+ */
+export function relancesAnnoncees(canal: string): string[] {
+  const libelles = PALIERS.filter((p) => p.canaux.includes(canal)).map((p) => {
+    if (p.jour === 0) return "LE JOUR MÊME";
+    if (p.jour === -1) return "RAPPEL LA VEILLE";
+    if (p.jour < 0) return `RELANCE J−${Math.abs(p.jour)}`;
+    return `RELANCE J+${p.jour}`;
+  });
+
+  // La confirmation ne vient pas d'un palier : elle part au règlement d'un
+  // renouvellement. Elle est listée parce qu'elle est promise — et elle est
+  // promise parce que `finaliserRenouvellement` la pousse pour de vrai.
+  return [...libelles, "CONFIRMATION"];
 }

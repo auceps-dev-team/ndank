@@ -11,6 +11,7 @@ import {
   canauxDuPalier,
   etatDe,
   gesteDuJour,
+  relancesAnnoncees,
   peutReprendre,
   type Abonnement,
 } from "./etats";
@@ -33,10 +34,17 @@ describe("l'état déduit", () => {
     expect(etatDe(a, ajouterJours(DEPART, 1))).toBe("ACTIVE");
   });
 
-  it("passe à renouveler dans les trois jours avant l'échéance", () => {
-    // Assez tôt pour qu'on puisse s'organiser, assez tard pour ne pas oublier.
-    expect(etatDe(a, ajouterJours(a.cycle.echeance, -4))).toBe("ACTIVE");
-    expect(etatDe(a, ajouterJours(a.cycle.echeance, -3))).toBe("A_RENOUVELER");
+  it("bascule exactement au premier palier, jamais après", () => {
+    // LE test qui empêche un palier écrit et jamais envoyé.
+    //
+    // `gesteDuJour` rend `RIEN` tant que l'état est ACTIVE. Si le préavis
+    // était plus court que le premier palier, la première relance ne partirait
+    // jamais — sans erreur, sans journal, sans que rien ne le dise. Les deux
+    // sont donc liés dans le code, et ce test le vérifie.
+    const premier = PALIERS[0]!.jour;
+
+    expect(etatDe(a, ajouterJours(a.cycle.echeance, premier - 1))).toBe("ACTIVE");
+    expect(etatDe(a, ajouterJours(a.cycle.echeance, premier))).toBe("A_RENOUVELER");
     expect(etatDe(a, a.cycle.echeance)).toBe("A_RENOUVELER");
   });
 
@@ -112,10 +120,20 @@ describe("le geste du jour", () => {
     });
   });
 
-  it("rappelle au premier palier, trois jours avant", () => {
-    const g = gesteDuJour(a, ajouterJours(a.cycle.echeance, -3), RIEN);
+  it("rappelle dès le premier palier", () => {
+    // Le jour vient de la table, pas d'un nombre recopié ici : avancer un
+    // palier ne doit pas rendre ce test faux en silence.
+    const g = gesteDuJour(a, ajouterJours(a.cycle.echeance, PALIERS[0]!.jour), RIEN);
     expect(g.faire).toBe("RAPPELER");
     expect(g.faire === "RAPPELER" && g.palier).toBe(0);
+  });
+
+  it("relance une semaine avant, puis la veille", () => {
+    // Ce que les maquettes annoncent à l'abonné : « RELANCE J−7 » puis
+    // « RAPPEL J−1 ». L'écrire ici empêche l'écran de promettre un calendrier
+    // que le moteur ne tient pas.
+    expect(PALIERS[0]!.jour).toBe(-7);
+    expect(PALIERS[1]!.jour).toBe(-1);
   });
 
   it("ne rappelle pas deux fois le même palier", () => {
@@ -159,7 +177,7 @@ describe("le geste du jour", () => {
 
 describe("l'échelle des canaux", () => {
   it("commence par le gratuit", () => {
-    // Un SMS se paie à chaque envoi. Relancer par SMS trois jours avant, pour
+    // Un SMS se paie à chaque envoi. Relancer par SMS une semaine avant, pour
     // un abonné qui paiera de toute façon, c'est mille SMS par mois pour rien.
     expect(canauxDuPalier(0)).not.toContain("sms");
     expect(canauxDuPalier(0)).toContain("courriel");
@@ -182,5 +200,35 @@ describe("l'échelle des canaux", () => {
 
   it("rend une liste vide sur un palier qui n'existe pas", () => {
     expect(canauxDuPalier(99)).toEqual([]);
+  });
+});
+
+describe("ce qu'on annonce à l'abonné", () => {
+  it("dit les paliers du canal, et rien que les siens", () => {
+    // Promettre sur la notification une relance qui ne part qu'en SMS serait
+    // la même faute que d'inventer un jour : un message attendu qui n'arrive
+    // pas, et rien pour le signaler.
+    const push = relancesAnnoncees("push");
+    const sms = relancesAnnoncees("sms");
+
+    expect(push).toContain("RELANCE J−7");
+    expect(push).toContain("RAPPEL LA VEILLE");
+    // J+5 ne passe qu'en SMS : il n'a rien à faire dans la liste des poussées.
+    expect(push).not.toContain("RELANCE J+5");
+    expect(sms).toContain("RELANCE J+5");
+  });
+
+  it("annonce la confirmation, parce qu'elle part vraiment", () => {
+    // `finaliserRenouvellement` la pousse. Si un jour ce n'était plus le cas,
+    // ce test resterait vert — d'où le test d'intégration qui, lui, vérifie
+    // l'envoi.
+    expect(relancesAnnoncees("push")).toContain("CONFIRMATION");
+  });
+
+  it("suit la table plutôt qu'une chaîne recopiée", () => {
+    // Le vrai sujet : autant de libellés que de paliers du canal, plus la
+    // confirmation. Ajouter un palier ajoute une pastille à l'écran.
+    const attendus = PALIERS.filter((p) => p.canaux.includes("push")).length;
+    expect(relancesAnnoncees("push")).toHaveLength(attendus + 1);
   });
 });
