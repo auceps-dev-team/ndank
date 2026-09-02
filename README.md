@@ -91,6 +91,27 @@ Puis un passage par jour. Il peut rater son tour : l'état se **déduit** des
 dates, il n'est jamais stocké — un jour sauté ne laisse rien de faux derrière
 lui.
 
+## Un helper pour ceux qui branchent un SMS
+
+`src/gsm7.ts` ne fait pas partie du cœur — le moteur ne l'importe pas. Il est
+là parce que tout hôte qui implémente `Envoi` pour un SMS tombe sur le même
+piège, et qu'il ne se voit nulle part.
+
+Un SMS écrit dans l'alphabet GSM tient 160 caractères par segment. Un seul
+caractère en dehors, et l'opérateur bascule le message entier en UCS-2 : 70. Le
+message n'est ni refusé ni tronqué, il coûte simplement deux à trois fois plus.
+
+Les coupables sont typographiques et invisibles à la relecture. Le plus sûr est
+l'espace fine insécable qu'`Intl.NumberFormat` place entre un montant et sa
+devise en français : elle est dans **chaque** relance.
+
+```ts
+import { replier, segments } from "./src/gsm7";
+
+const texte = replier(`Renouvelle pour ${montant} : ${lien}`);
+segments(texte); // 1 — à vérifier, pas à supposer
+```
+
 ## Ce que Ndank ne fait pas
 
 **Il n'encaisse pas.** Il décide qui relancer et quand ; le paiement lui-même
