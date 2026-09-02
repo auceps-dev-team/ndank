@@ -53,8 +53,25 @@ export interface Coordonnees {
   nom: string | null;
   courriel: string | null;
   telephone: string | null;
-  /** Jeton de notification, quand l'app est installée. */
-  jetonPush: string | null;
+  /**
+   * Les appareils où la notification peut arriver.
+   *
+   * ─────────────────────────────────────────────────────────────────────
+   * UNE LISTE, ET NON UN JETON
+   *
+   * Une adresse de courriel est unique, un numéro aussi. Les appareils, non :
+   * quelqu'un installe l'application sur son téléphone ET sur son ordinateur.
+   * N'en garder qu'un ferait arriver la relance sur celui resté dans un tiroir.
+   *
+   * ─────────────────────────────────────────────────────────────────────
+   * DES POIGNÉES OPAQUES, PAS DES IDENTIFIANTS D'APPAREIL
+   *
+   * Ndank ne les interprète jamais : il les passe à `Envoi`. C'est délibéré —
+   * un abonnement push réel porte des clés de chiffrement, et elles n'ont
+   * aucune raison de traverser un module qui ne décide que de qui relancer.
+   * L'hôte met ce qu'il veut derrière la poignée.
+   */
+  appareils: string[];
 }
 
 /**

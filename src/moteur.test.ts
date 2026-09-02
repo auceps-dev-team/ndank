@@ -37,7 +37,7 @@ function faussePorts(
     nom: "Awa",
     courriel: "abonne@ndank.test",
     telephone: "+2250700000000",
-    jetonPush: "jeton",
+    appareils: ["appareil-1"],
   };
 
   const ports: Ports = {
@@ -68,7 +68,7 @@ function faussePorts(
       disponible(canal, coord) {
         if (canal === "courriel") return coord.courriel !== null;
         if (canal === "sms") return coord.telephone !== null;
-        return coord.jetonPush !== null;
+        return coord.appareils.length > 0;
       },
       async envoyer(canal, _coord, message) {
         if (!marchent.includes(canal)) return false;
@@ -185,7 +185,7 @@ describe("le passage quotidien", () => {
         nom: null,
         courriel: null,
         telephone: "+225",
-        jetonPush: null,
+        appareils: [],
       },
       canauxQuiMarchent: ["courriel", "sms", "push"],
     });

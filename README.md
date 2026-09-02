@@ -52,6 +52,13 @@ gratuit et ne sort le SMS qu'au moment où il décide de quelque chose. Sur mill
 abonnés mensuels, la règle inverse coûterait mille SMS par mois pour des gens
 qui auraient payé de toute façon.
 
+C'est aussi pourquoi `Coordonnees.appareils` est une **liste** et non un jeton :
+une adresse de courriel est unique, un numéro aussi, mais quelqu'un installe
+l'application sur son téléphone ET sur son ordinateur. Ce sont des poignées
+opaques — Ndank ne les interprète jamais. Un abonnement push réel porte des
+clés de chiffrement, et elles n'ont aucune raison de traverser un module qui ne
+décide que de qui relancer.
+
 ## Deux garde-fous
 
 **Un passage qui a raté trois jours n'envoie qu'une relance**, la plus avancée.
