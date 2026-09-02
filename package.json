@@ -1,0 +1,26 @@
+{
+  "name": "ndank",
+  "version": "0.1.0",
+  "description": "Abonnements par mobile money, sans carte bancaire.",
+  "type": "module",
+  "main": "./src/moteur.ts",
+  "types": "./src/moteur.ts",
+  "exports": {
+    ".": "./src/moteur.ts",
+    "./cycle": "./src/cycle.ts",
+    "./etats": "./src/etats.ts",
+    "./ports": "./src/ports.ts"
+  },
+  "files": ["src", "README.md"],
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": ["abonnement", "subscription", "mobile-money", "afrique", "xof"],
+  "license": "UNLICENSED",
+  "private": true,
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7"
+  }
+}
