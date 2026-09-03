@@ -89,7 +89,7 @@ rafale, et ce refus deviendrait une relance qui ne part pas.
 | | Pour qui | Ce qu'il faut faire |
 |---|---|---|
 | **Ports** | Autonomie complète | Implémenter `Lecture`, `Ecriture`, `Envoi` contre votre base |
-| **Schéma fourni** | Intégration rapide | Prendre les tables Prisma livrées *(à venir)* |
+| **Schéma fourni** | Intégration rapide | Prendre les tables Prisma livrées *(en cours)* |
 | **Service hébergé** | Sans code | Appeler l'API *(à venir)* |
 
 Les trois partagent le même cœur : les niveaux 2 et 3 ne sont que des
@@ -134,6 +134,80 @@ l'accès était déjà perdu, auquel cas facturer une période écoulée n'aurai
 aucun sens. Aucune notification ne part d'ici : le moteur ne parle qu'au moment
 de relancer, et un hôte qui veut confirmer un paiement le fait chez lui.
 
+## Encaisser sans encaisser
+
+Ndank sait demander un paiement, et constater qu'il a eu lieu. **L'argent ne
+passe jamais par lui** : il va du portefeuille de l'abonné au compte marchand de
+l'hôte, chez le fournisseur que l'hôte a choisi.
+
+```ts
+import { fournisseur } from "./src/encaissement/registre";
+
+const encaissement = fournisseur("flutterwave", {
+  cleSecrete: process.env.FLW_CLE,
+  secretWebhook: process.env.FLW_WEBHOOK,
+});
+```
+
+Trois adaptateurs sont branchés — **Flutterwave**, **Paystack** et **MTN MoMo**.
+Quatre autres ont leurs bases posées : **Orange**, **Wave**, **Moov** et
+**Djamo**. Ils déclarent déjà les champs qu'ils attendront, pour qu'un hôte
+puisse ouvrir ses comptes marchands avant que l'adaptateur n'existe — c'est la
+partie longue. En attendant, ils lèvent un message qui dit quoi faire.
+
+Une configuration incomplète échoue au démarrage, pas en production :
+
+```ts
+import { champsManquants } from "./src/encaissement/registre";
+
+champsManquants("mtn", process.env); // ["cleAbonnement"] — et on refuse de démarrer
+```
+
+Sans cela, une clé absente part dans un en-tête vide, le fournisseur répond 401,
+et le message parle d'autorisation — jamais de la ligne manquante.
+
+### Les cinq temps, et les deux qui nous appartiennent
+
+Flutterwave, Paystack, MTN et Orange n'ont ni le même vocabulaire ni les mêmes
+verbes. Ils ont la même chorégraphie : s'authentifier, initier avec une clé
+d'idempotence, laisser l'abonné autoriser sur son téléphone, recevoir le
+résultat plus tard, re-vérifier avant de donner la valeur.
+
+Le premier temps est à l'adaptateur, le troisième à l'abonné, le quatrième
+arrive quand il arrive. Restent le deuxième et le cinquième — `inviter` et
+`constater`. C'est tout le port.
+
+La clé de cycle sert de référence, donc de clé d'idempotence : rejouer un
+passage ne crée pas une seconde demande de paiement.
+
+## Payer en plusieurs fois
+
+Une part importante des abonnés vit de revenus irréguliers. Exiger deux mille
+francs d'un coup, c'est perdre celui qui en a mille deux cents aujourd'hui et
+huit cents jeudi — alors qu'il veut payer. Le mobile money rend d'ailleurs la
+chose naturelle : chaque paiement est un geste séparé, autorisé séparément.
+
+Deux règles, à égalité, et c'est l'abonné qui choisit :
+
+| Versé sur 2 000 F | `CREDIT` | `PRORATA` |
+|---|---|---|
+| 2 000 | +30 jours | +30 jours |
+| 4 000 | +60 jours | +60 jours |
+| 1 200 | rien — il manque 800 | **+18 jours** |
+| 1 200 puis 800 | +30 jours | +18 puis +12 |
+
+**Crédit** convient à un service qu'on ne peut pas couper à moitié. **Prorata**
+à un abonné qui préfère savoir que son argent a servi. Les deux s'accordent
+toujours sur le double paiement.
+
+Le calcul est cumulé, jamais incrémental : on garde le total versé et les jours
+déjà accordés, et l'arrondi n'a lieu qu'une fois. Arrondir à chaque versement
+ferait perdre moins d'un franc à chaque fois — et un jour entier au bout de
+trente.
+
+`resteADevoir` existe pour la relance : redemander la somme entière à quelqu'un
+qui a déjà versé la moitié lui fait croire que son premier versement s'est perdu.
+
 ## Un helper pour ceux qui branchent un SMS
 
 `src/gsm7.ts` ne fait pas partie du cœur — le moteur ne l'importe pas. Il est
@@ -169,10 +243,11 @@ if (perdus.length > 0) { /* replier sur autre chose que le nom */ }
 
 ## Ce que Ndank ne fait pas
 
-**Il n'encaisse pas.** Il décide qui relancer et quand, et il sait enchaîner le
-cycle une fois qu'on lui dit qu'un paiement est arrivé ; le paiement lui-même
-appartient à l'hôte, qui a déjà son opérateur. Ndank ne veut pas devenir un
-prestataire de paiement de plus.
+**L'argent ne passe jamais par lui.** Il sait demander un paiement à un
+fournisseur, constater qu'il a eu lieu et enchaîner le cycle — mais la somme va
+du portefeuille de l'abonné au compte marchand de l'hôte, directement. Ni solde,
+ni reversement, ni remboursement. Ndank ne veut pas devenir un prestataire de
+paiement de plus, et n'en porte donc ni la responsabilité ni l'agrément.
 
 **Il ne confirme pas.** Le moteur ne parle qu'au moment de relancer. Un accusé
 de paiement est un message que l'hôte envoie avec ses propres mots, sur ses

@@ -6,6 +6,83 @@ le reste.
 
 ---
 
+## 0.3.0
+
+La couche SDK commence. Ndank sait désormais demander un paiement à un
+fournisseur et constater qu'il a eu lieu — sans jamais toucher l'argent, qui va
+du portefeuille de l'abonné au compte marchand de l'hôte.
+
+Sept intégrations de paiement africaines lues et quatre documentations
+d'opérateurs dépouillées avant d'écrire une ligne. Toutes décrivent la même
+chorégraphie en cinq temps, et deux seulement nous appartiennent.
+
+### Ajouté
+
+**La couche d'encaissement.** Un port à deux verbes — `inviter` et `constater` —
+plus `lireWebhook`, parce que Ndank vit côté serveur. `Http` est un port lui
+aussi : aucun appel réseau n'est fait dans le module, ce qui permet d'éprouver
+un flux complet sans compte marchand.
+
+**Trois adaptateurs branchés.** Flutterwave (trois appels par invitation, avec
+la vérification que la devise correspond au moyen de paiement), Paystack (un
+seul appel, et un `200` avec `status: false` traité comme un refus), MTN MoMo
+(jeton d'une heure mis en cache, UUID d'idempotence dérivé de la clé de cycle).
+
+**Quatre fondations.** Orange, Wave, Moov et Djamo déclarent leurs champs de
+configuration et lèvent un message qui nomme ce qu'il reste à obtenir. Aucune
+adresse d'API n'est écrite sur la foi d'un paquet communautaire : l'illusion
+d'une intégration se paie au premier vrai paiement.
+
+**La vérification des signatures.** HMAC-SHA512 pour Paystack, HMAC-SHA256 pour
+Flutterwave, sur le corps brut. L'ancien en-tête `verif-hash` reste accepté,
+mais jamais en repli d'une signature moderne invalide. Les rappels MTN n'étant
+pas signés, ils ne produisent qu'un état `INCONNU` qui force un constat
+authentifié.
+
+**Le registre.** `fournisseur(nom, identifiants)` refuse de construire un
+adaptateur dont il manque un champ, et nomme le champ. `champsManquants()`
+permet de valider toute la configuration au démarrage.
+
+**Le paiement en plusieurs fois.** Deux politiques à égalité : `CREDIT`
+n'enchaîne rien tant que le compte n'y est pas, `PRORATA` accorde du temps au
+prorata du versement. Elles s'accordent toujours sur le double paiement.
+
+**`cycleAvance`.** L'échéance peut avancer d'une durée libre, et `cycleSuivant`
+n'en est plus qu'un cas particulier. Les deux partagent la même arithmétique,
+exception comprise.
+
+**La réconciliation.** Du paiement constaté au cycle avancé. Elle décide, elle
+n'écrit pas : faire avancer une échéance et noter le versement qui l'a payée
+doivent tomber ou réussir ensemble, et seul l'hôte peut ouvrir cette
+transaction.
+
+### Modifié
+
+`cycleSuivant` délègue à `cycleAvance`. Comportement identique — les douze tests
+existants passent sans modification.
+
+La référence transmise au fournisseur porte désormais le numéro du versement
+(`2026-02-09#1`). Conséquence directe du paiement en plusieurs fois : réutiliser
+la clé du cycle aurait fait reconnaître le premier versement par le fournisseur,
+et le second n'aurait jamais eu lieu.
+
+`@types/node` en dépendance de développement, pour `crypto` et `Buffer`.
+`dependencies` reste vide.
+
+### Tests
+
+87 → 179. Les ajouts couvrent les trois adaptateurs contre un faux transport,
+la vérification des signatures y compris le repli refusé, la déduplication d'un
+webhook rejoué dix fois, et l'absence de dérive du prorata.
+
+Ce dernier point a fait refaire le module de règlement : la première version
+arrondissait à chaque versement et accordait quarante-quatre jours au lieu de
+quarante-cinq sur trente versements de cent francs. Le modèle est désormais
+cumulé, et un test énonce la propriété qui l'empêche — seul le total compte,
+jamais le découpage.
+
+---
+
 ## 0.2.0
 
 Les correctifs d'un audit complet du cœur. Le moteur métier était juste ;
