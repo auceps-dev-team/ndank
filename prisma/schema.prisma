@@ -261,10 +261,18 @@ model Abonnement {
 
   /// L'index qui porte le passage quotidien.
   ///
-  /// `aRelancer` cherche les abonnements d'un projet, non clos, dont l'échéance
-  /// tombe avant une date. Sans cet index, la requête parcourt toute la table
-  /// chaque matin, et finit par tomber en délai d'attente.
-  @@index([projetId, closLe, echeance])
+  /// `aRelancer` cherche les abonnements d'un projet, non clos, **non résiliés**,
+  /// dont l'échéance tombe avant une date. Les trois premières colonnes sont des
+  /// égalités, la quatrième un intervalle : c'est l'ordre qu'un index B-tree
+  /// sait exploiter d'un bout à l'autre.
+  ///
+  /// `resilieeLe` est dans l'index, et pas seulement dans le filtre, pour une
+  /// raison qui n'est pas de performance. Le moteur ne clôt **jamais** un
+  /// abonnement résilié : `etatDe` rend `RESILIEE` avant même de regarder les
+  /// dates, donc `gesteDuJour` rend `RIEN` pour toujours. Un résilié laissé
+  /// éligible resterait donc dans le lot indéfiniment, exactement comme un clos
+  /// — et le lot est plafonné.
+  @@index([projetId, closLe, resilieeLe, echeance])
   @@index([abonneId])
   @@map("abonnement")
 }
@@ -389,6 +397,12 @@ model Versement {
   @@unique([fournisseur, identifiantFournisseur])
   @@index([abonnementId, creeLe])
   @@index([reference])
+  /// `dejaCompte` interroge par le seul identifiant du fournisseur : il est la
+  /// deuxième colonne de l'unicité ci-dessus, qu'un index B-tree ne sait donc
+  /// pas exploiter seule. Sans cet index-là, la déduplication parcourt la table
+  /// des versements à chaque webhook — et Paystack en rejoue pendant
+  /// soixante-douze heures.
+  @@index([identifiantFournisseur])
   @@map("versement")
 }
 
@@ -443,10 +457,23 @@ model Evenement {
   /// `versement.compte`, `passage.incident`…
   type String
 
+  /// De quoi rendre un événement idempotent, quand il doit l'être.
+  ///
+  /// Le moteur redit `suspendre` chaque jour pendant toute la fenêtre de
+  /// reprise — trente jours, pour un seul et même fait. Journaliser chaque
+  /// appel donnerait trente lignes là où il s'est passé une chose.
+  ///
+  /// En posant ici la clé du cycle, l'unicité ci-dessous n'en garde qu'une. Le
+  /// champ est nullable, et PostgreSQL considère deux `NULL` comme distincts :
+  /// les événements qui n'ont pas à être uniques — un incident, une relance —
+  /// se répètent librement.
+  cle String?
+
   detail Json?
 
   quandLe DateTime @default(now())
 
+  @@unique([abonnementId, type, cle])
   @@index([projetId, quandLe])
   @@index([abonnementId, quandLe])
   @@index([projetId, type, quandLe])
