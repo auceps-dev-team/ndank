@@ -6,6 +6,61 @@ le reste.
 
 ---
 
+## 0.4.0
+
+Le niveau 2 commence : les tables toutes faites, pour qui accepte Prisma et
+PostgreSQL. Elles n'implémentent rien d'autre que les mêmes ports — le cœur ne
+change pas d'une ligne.
+
+### Ajouté
+
+**`prisma/schema.prisma`** — neuf modèles, cinq énumérés, validés par
+`prisma validate`. `Projet`, `Offre`, `Abonne` et `Abonnement` portent le
+métier ; `Relance`, `Invitation` et `Versement` portent les faits ;
+`WebhookRecu` et `Evenement` portent la trace.
+
+**`.env.example`** — les variables attendues, fournisseur par fournisseur, y
+compris ceux qui ne sont pas encore branchés : un compte marchand met des
+semaines à ouvrir, et les champs sont déjà connus.
+
+**`npm run schema`** — la validation, branchée sur l'intégration continue.
+
+### Ce que le schéma décide
+
+**Il n'y a pas de colonne `etat`.** ACTIVE, A_RENOUVELER, SUSPENDUE et EXPIREE
+se déduisent des dates. La base garde les faits — payé, relancé, résilié, clos —
+pas les conclusions. C'est la même règle que dans le cœur, et c'est la première
+chose que quelqu'un voudra changer.
+
+**Aucune clé d'API en base.** Une base est sauvegardée, répliquée, restaurée sur
+un poste de développement. Les identifiants viennent de l'environnement, et
+`.env` rejoint `.gitignore`.
+
+**Le prix est recopié dans l'abonnement.** Sinon augmenter un tarif changerait
+rétroactivement ce que doivent les abonnés en cours, y compris sur un cycle déjà
+à moitié payé.
+
+**Deux contraintes d'unicité portent l'idempotence** plutôt que de l'espérer :
+`(abonnementId, cle)` sur les relances, `(fournisseur, identifiantFournisseur)`
+sur les versements — cette dernière empêchant un webhook rejoué soixante-douze
+heures durant d'avancer trois fois la même échéance.
+
+**`closLe` et son index** rendent applicable le contrat « ne pas rendre ce qui
+est déjà clos » de `aRelancer`, sans quoi les morts occupent un lot plafonné.
+
+L'argent est en `Int`, en unités mineures. Jamais `Float`, jamais `Decimal`.
+
+### Ce qui n'est pas livré
+
+Pas de migrations : elles entreraient en conflit avec l'historique de l'hôte. Le
+schéma se copie et se migre chez lui.
+
+Pas encore d'implémentation des ports `Lecture`, `Ecriture` et `Creances` contre
+ces tables. C'est l'étape suivante, et c'est elle qui rendra le niveau 2
+utilisable sans écrire une requête.
+
+---
+
 ## 0.3.0
 
 La couche SDK commence. Ndank sait désormais demander un paiement à un

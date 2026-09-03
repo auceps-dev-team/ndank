@@ -134,6 +134,39 @@ l'accès était déjà perdu, auquel cas facturer une période écoulée n'aurai
 aucun sens. Aucune notification ne part d'ici : le moteur ne parle qu'au moment
 de relancer, et un hôte qui veut confirmer un paiement le fait chez lui.
 
+### Niveau 2 : le schéma fourni
+
+Les tables sont dans [`prisma/schema.prisma`](prisma/schema.prisma) — neuf
+modèles, validés par `prisma validate`. Le schéma se copie dans votre projet et
+se migre avec votre propre historique ; Ndank ne livre pas de migrations, qui
+entreraient en conflit avec les vôtres.
+
+```
+cp .env.example .env      # puis remplir DATABASE_URL et vos clés
+npx prisma migrate dev
+```
+
+Quatre décisions y sont encodées, et méritent d'être connues avant de les
+modifier :
+
+**Il n'y a pas de colonne `etat`.** ACTIVE, A_RENOUVELER, SUSPENDUE et EXPIREE
+se déduisent des dates, jamais ne se stockent. La base garde les faits — payé,
+relancé, résilié, clos — pas les conclusions.
+
+**Aucune clé d'API en base.** Une base est sauvegardée, répliquée, restaurée sur
+un poste de développement. Les identifiants viennent de l'environnement.
+
+**Le prix est recopié dans l'abonnement.** Sinon augmenter un tarif changerait
+rétroactivement ce que doivent tous les abonnés en cours, y compris sur un cycle
+déjà à moitié payé.
+
+**Deux contraintes d'unicité portent l'idempotence** : `(abonnementId, cle)` sur
+les relances, `(fournisseur, identifiantFournisseur)` sur les versements. C'est
+cette dernière qui empêche un webhook rejoué soixante-douze heures durant
+d'avancer trois fois la même échéance.
+
+L'argent est en `Int`, en unités mineures — jamais `Float`, jamais `Decimal`.
+
 ## Encaisser sans encaisser
 
 Ndank sait demander un paiement, et constater qu'il a eu lieu. **L'argent ne
