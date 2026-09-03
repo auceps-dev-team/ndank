@@ -1,4 +1,5 @@
 import { cleDeCycle, joursEntre, type Cycle } from "./cycle";
+import type { Canal } from "./ports";
 
 /**
  * Ndank — où en est un abonnement, et ce qu'il faut en faire.
@@ -121,8 +122,15 @@ export type Geste =
  * décide vraiment de quelque chose : quand l'accès va être coupé.
  *
  * Les jours sont relatifs à l'échéance. Négatif = avant.
+ *
+ * Les canaux sont typés `Canal` et non `string` : une faute de frappe passait
+ * la compilation, puis le cast du moteur, pour finir en canal qu'aucun hôte ne
+ * reconnaît. La relance ne partait pas, et rien ne le disait.
+ *
+ * L'ordre des jours doit rester croissant — `gesteDuJour` parcourt la table à
+ * l'envers pour trouver le palier le plus avancé, et un test le verrouille.
  */
-export const PALIERS: readonly { jour: number; canaux: string[] }[] = [
+export const PALIERS: readonly { jour: number; canaux: Canal[] }[] = [
   /** La relance de fond, une semaine avant. Elle laisse le temps d'agir. */
   { jour: -7, canaux: ["courriel", "push"] },
   /** Le rappel de la veille, pour ceux qui ont remis à plus tard. */
@@ -193,7 +201,7 @@ export function gesteDuJour(
 }
 
 /** Les canaux du palier, dans l'ordre où il faut les essayer. */
-export function canauxDuPalier(palier: number): readonly string[] {
+export function canauxDuPalier(palier: number): readonly Canal[] {
   return PALIERS[palier]?.canaux ?? [];
 }
 
@@ -213,7 +221,7 @@ export function canauxDuPalier(palier: number): readonly string[] {
  * Seuls les paliers où la notification passe sont listés : promettre sur ce
  * canal une relance qui ne part qu'en SMS serait la même faute.
  */
-export function relancesAnnoncees(canal: string): string[] {
+export function relancesAnnoncees(canal: Canal): string[] {
   const libelles = PALIERS.filter((p) => p.canaux.includes(canal)).map((p) => {
     if (p.jour === 0) return "LE JOUR MÊME";
     if (p.jour === -1) return "RAPPEL LA VEILLE";

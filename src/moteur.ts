@@ -4,6 +4,7 @@ import {
   etatDe,
   gesteDuJour,
   PALIERS,
+  PREAVIS_JOURS,
 } from "./etats";
 import type {
   AbonnementLu,
@@ -57,8 +58,12 @@ const LOT = 500;
  * Le préavis le plus lointain, plus une marge. Chercher au-delà ferait remonter
  * des abonnements dont il n'y a rien à faire, et le moteur les écarterait un par
  * un — du travail pour rien, à l'échelle de tout le fichier.
+ *
+ * Dérivé de `PREAVIS_JOURS` plutôt que recalculé depuis `PALIERS` : refaire le
+ * calcul ici, c'était reprendre la recopie que `PREAVIS_JOURS` existe pour
+ * supprimer — et les deux replis avaient déjà divergé.
  */
-const FENETRE_JOURS = Math.abs(PALIERS[0]?.jour ?? 3) + 2;
+const FENETRE_JOURS = PREAVIS_JOURS + 2;
 
 /**
  * Les faits à transmettre, pas la prose.
@@ -105,15 +110,14 @@ async function relancer(
   ou: Coordonnees,
   palier: number,
   message: Message,
-): Promise<string[]> {
-  const partis: string[] = [];
+): Promise<Canal[]> {
+  const partis: Canal[] = [];
 
   for (const canal of canauxDuPalier(palier)) {
-    const c = canal as Canal;
-    if (!ports.envoi.disponible(c, ou)) continue;
+    if (!ports.envoi.disponible(canal, ou)) continue;
 
-    if (await ports.envoi.envoyer(c, ou, message)) {
-      partis.push(c);
+    if (await ports.envoi.envoyer(canal, ou, message)) {
+      partis.push(canal);
       break;
     }
   }

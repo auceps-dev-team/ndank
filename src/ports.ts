@@ -107,7 +107,11 @@ export interface Lecture {
  */
 export interface Ecriture {
   /** Note qu'une relance est partie, pour ne pas la renvoyer demain. */
-  noterRelance(abonnementId: string, cle: string, canaux: string[]): Promise<void>;
+  noterRelance(
+    abonnementId: string,
+    cle: string,
+    canaux: readonly Canal[],
+  ): Promise<void>;
 
   /** Coupe l'accès. Appelée tant que l'abonnement reste suspendu. */
   suspendre(abonnementId: string): Promise<void>;

@@ -28,7 +28,7 @@ function faussePorts(
   } = {},
 ) {
   const envois: Array<{ canal: Canal; message: Message }> = [];
-  const notees: Array<{ id: string; cle: string; canaux: string[] }> = [];
+  const notees: Array<{ id: string; cle: string; canaux: readonly Canal[] }> = [];
   const suspendus: string[] = [];
   const clos: string[] = [];
 

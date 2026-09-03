@@ -280,3 +280,18 @@ describe("l'heure du passage", () => {
     }
   });
 });
+
+describe("la table des paliers", () => {
+  it("garde ses jours dans l'ordre croissant", () => {
+    // `gesteDuJour` la parcourt à l'envers pour trouver le palier le plus
+    // avancé. Un palier inséré au mauvais rang casserait ce choix en silence :
+    // on enverrait le rappel de la veille alors que l'accès va tomber.
+    const jours = PALIERS.map((p) => p.jour);
+    expect(jours).toEqual([...jours].sort((x, y) => x - y));
+  });
+
+  it("n'a pas deux paliers le même jour", () => {
+    const jours = PALIERS.map((p) => p.jour);
+    expect(new Set(jours).size).toBe(jours.length);
+  });
+});
