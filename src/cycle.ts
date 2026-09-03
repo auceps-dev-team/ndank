@@ -160,20 +160,44 @@ export function cycleSuivant(
   cadence: Cadence,
   reglages: Reglages = REGLAGES_PAR_DEFAUT,
 ): Cycle {
+  return cycleAvance(precedent, paiement, JOURS_DE_CADENCE[cadence], reglages);
+}
+
+/**
+ * Le cycle suivant, avancé d'un nombre de jours quelconque.
+ *
+ * ────────────────────────────────────────────────────────────────────────────
+ * POURQUOI UNE DURÉE LIBRE, ET PAS SEULEMENT UNE CADENCE
+ *
+ * Parce qu'un abonné peut payer en plusieurs fois. Mille deux cents francs sur
+ * deux mille n'achètent pas un mois : ils achètent dix-huit jours. L'échéance
+ * doit donc pouvoir avancer d'un nombre de jours que la cadence ne dicte pas.
+ *
+ * `cycleSuivant` n'est plus qu'un cas particulier de celle-ci — celui où l'on
+ * paie le compte rond. Les deux partagent donc exactement la même arithmétique
+ * de dates, y compris l'exception ci-dessous, et ne peuvent pas diverger.
+ *
+ * ────────────────────────────────────────────────────────────────────────────
+ * L'EXCEPTION VAUT ICI AUSSI
+ *
+ * Un abonnement repris **après** la fin de son accès repart du jour du
+ * paiement. Faire avancer une échéance vieille de trois semaines facturerait
+ * une période déjà écoulée, que l'on paie le compte rond ou une fraction.
+ */
+export function cycleAvance(
+  precedent: Cycle,
+  paiement: Date,
+  jours: number,
+  reglages: Reglages = REGLAGES_PAR_DEFAUT,
+): Cycle {
   const paye = jour(paiement);
 
-  if (paye > precedent.accesJusquA) {
-    return cycleApresPaiement(paye, cadence, reglages);
-  }
-
-  const echeance = ajouterJours(
-    precedent.echeance,
-    JOURS_DE_CADENCE[cadence],
-  );
+  const depart = paye > precedent.accesJusquA ? paye : precedent.echeance;
+  const echeance = ajouterJours(depart, jours);
   const accesJusquA = ajouterJours(echeance, reglages.graceJours);
 
   return {
-    debut: precedent.echeance,
+    debut: depart,
     echeance,
     accesJusquA,
     repriseJusquA: ajouterJours(accesJusquA, reglages.repriseJours),

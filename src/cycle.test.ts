@@ -5,6 +5,7 @@ import {
   ajouterJours,
   cleDeCycle,
   cycleApresPaiement,
+  cycleAvance,
   cycleSuivant,
   jour,
   joursEntre,
@@ -113,6 +114,66 @@ describe("le cycle suivant", () => {
     expect(joursEntre(premier.echeance, second.echeance)).toBe(30);
   });
 });
+describe("le cycle avancé d'une durée libre", () => {
+  // `cycleSuivant` n'est plus qu'un cas particulier de celle-ci : celui où l'on
+  // paie le compte rond. Les deux partagent donc la même arithmétique de dates,
+  // exception comprise, et ne peuvent pas diverger.
+  const premier = cycleApresPaiement(LE_10_JANVIER, "MENSUEL");
+
+  it("avance l'échéance du nombre de jours demandé", () => {
+    // Mille deux cents francs sur deux mille achètent dix-huit jours.
+    const dixHuit = cycleAvance(premier, premier.echeance, 18);
+    expect(joursEntre(premier.echeance, dixHuit.echeance)).toBe(18);
+  });
+
+  it("rend exactement ce que rend `cycleSuivant` sur une cadence entière", () => {
+    const parAvance = cycleAvance(premier, premier.echeance, 30);
+    const parCadence = cycleSuivant(premier, premier.echeance, "MENSUEL");
+
+    expect(parAvance).toEqual(parCadence);
+  });
+
+  it("garde la grâce et la reprise sur un cycle raccourci", () => {
+    // Un cycle de dix-huit jours reste un cycle : l'abonné ne perd pas sa grâce
+    // parce qu'il a payé en deux fois.
+    const court = cycleAvance(premier, premier.echeance, 18);
+
+    expect(joursEntre(court.echeance, court.accesJusquA)).toBe(
+      REGLAGES_PAR_DEFAUT.graceJours,
+    );
+    expect(joursEntre(court.accesJusquA, court.repriseJusquA)).toBe(
+      REGLAGES_PAR_DEFAUT.repriseJours,
+    );
+  });
+
+  it("repart du paiement quand l'accès était déjà perdu", () => {
+    // La même exception que `cycleSuivant`, et pour la même raison : avancer
+    // une échéance vieille de trois semaines facturerait une période écoulée.
+    const bienApres = ajouterJours(premier.accesJusquA, 10);
+    const repris = cycleAvance(premier, bienApres, 18);
+
+    expect(repris.debut.getTime()).toBe(jour(bienApres).getTime());
+    expect(joursEntre(bienApres, repris.echeance)).toBe(18);
+  });
+
+  it("enchaîne sur l'échéance tant que l'accès tient", () => {
+    const enRetard = ajouterJours(premier.echeance, 3);
+    const suivant = cycleAvance(premier, enRetard, 18);
+
+    // Et non 21, qui serait le compte à partir du paiement.
+    expect(joursEntre(premier.echeance, suivant.echeance)).toBe(18);
+  });
+
+  it("additionne plusieurs avances comme un seul saut", () => {
+    // Deux versements de dix-huit et douze jours valent trente jours, sans
+    // que la grâce ne se décale entre-temps.
+    const a = cycleAvance(premier, premier.echeance, 18);
+    const b = cycleAvance(a, a.echeance, 12);
+
+    expect(joursEntre(premier.echeance, b.echeance)).toBe(30);
+  });
+});
+
 
 describe("la clé de cycle", () => {
   it("est la même quelle que soit l'heure du passage", () => {
