@@ -1,6 +1,6 @@
 {
   "name": "ndank",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Abonnements par mobile money, sans carte bancaire.",
   "type": "module",
   "main": "./src/moteur.ts",
@@ -14,7 +14,8 @@
   },
   "files": [
     "src",
-    "README.md"
+    "README.md",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "test": "vitest run",

@@ -188,10 +188,15 @@ n'envoie qu'une relance » sans rien monter, en une milliseconde.
 Extrait de [Baobart](https://github.com/auceps-dev-team/Baobart), place de
 marché ivoirienne de produits numériques, où il tourne en production.
 
+## Versions
+
+Ce qui change d'une version à l'autre est consigné dans
+[CHANGELOG.md](CHANGELOG.md).
+
 ## Licence
 
 MIT — voir [LICENSE](LICENSE).
 
 Le paquet reste `private` : la licence dit ce qu'on a le droit de faire du code,
 pas qu'il soit prêt à être publié sur npm. Les niveaux 2 et 3 n'existent pas
-encore, et une version 0.1.0 publiée se reprend mal.
+encore, et une version partie sur npm se reprend mal.
