@@ -1,0 +1,30 @@
+name: vérifier
+
+# Le cœur de Ndank est pur et sans dépendance : la suite tourne en une seconde
+# et ne demande ni base ni réseau. Il n'y avait donc aucune raison de la laisser
+# dépendre de qui pense à la lancer.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verifier:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # `npm ci` et non `npm install` : le verrou existe pour que deux machines
+      # installent la même chose, et `ci` est ce qui le respecte.
+      - run: npm ci
+
+      - run: npm run typecheck
+
+      - run: npm test
