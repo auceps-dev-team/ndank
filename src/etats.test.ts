@@ -218,18 +218,20 @@ describe("ce qu'on annonce à l'abonné", () => {
     expect(sms).toContain("RELANCE J+5");
   });
 
-  it("annonce la confirmation, parce qu'elle part vraiment", () => {
-    // `finaliserRenouvellement` la pousse. Si un jour ce n'était plus le cas,
-    // ce test resterait vert — d'où le test d'intégration qui, lui, vérifie
-    // l'envoi.
-    expect(relancesAnnoncees("push")).toContain("CONFIRMATION");
+  it("n'annonce que ce que ce module envoie", () => {
+    // « CONFIRMATION » figurait ici, justifiée par une fonction restée dans
+    // Baobart. Ndank enchaîne bien le cycle après un paiement, mais ne pousse
+    // aucune notification à cette occasion : l'annoncer faisait mentir l'écran,
+    // ce que cette fonction existe précisément pour empêcher.
+    expect(relancesAnnoncees("push")).not.toContain("CONFIRMATION");
+    expect(relancesAnnoncees("sms")).not.toContain("CONFIRMATION");
   });
 
   it("suit la table plutôt qu'une chaîne recopiée", () => {
-    // Le vrai sujet : autant de libellés que de paliers du canal, plus la
-    // confirmation. Ajouter un palier ajoute une pastille à l'écran.
+    // Le vrai sujet : autant de libellés que de paliers du canal. Ajouter un
+    // palier ajoute une pastille à l'écran.
     const attendus = PALIERS.filter((p) => p.canaux.includes("push")).length;
-    expect(relancesAnnoncees("push")).toHaveLength(attendus + 1);
+    expect(relancesAnnoncees("push")).toHaveLength(attendus);
   });
 });
 

@@ -220,17 +220,23 @@ export function canauxDuPalier(palier: number): readonly Canal[] {
  *
  * Seuls les paliers où la notification passe sont listés : promettre sur ce
  * canal une relance qui ne part qu'en SMS serait la même faute.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * ON N'ANNONCE QUE CE QUE CE MODULE ENVOIE
+ *
+ * Une entrée « CONFIRMATION » figurait ici, justifiée par une fonction restée
+ * dans Baobart. Ndank enchaîne bien le cycle après un paiement — c'est
+ * `finaliserRenouvellement` — mais il ne pousse aucune notification à cette
+ * occasion : le moteur ne parle qu'au moment de relancer. L'annoncer faisait
+ * donc mentir l'écran, ce que cette fonction existe précisément pour empêcher.
+ *
+ * L'hôte qui envoie sa propre confirmation l'ajoute à cette liste chez lui.
  */
 export function relancesAnnoncees(canal: Canal): string[] {
-  const libelles = PALIERS.filter((p) => p.canaux.includes(canal)).map((p) => {
+  return PALIERS.filter((p) => p.canaux.includes(canal)).map((p) => {
     if (p.jour === 0) return "LE JOUR MÊME";
     if (p.jour === -1) return "RAPPEL LA VEILLE";
     if (p.jour < 0) return `RELANCE J−${Math.abs(p.jour)}`;
     return `RELANCE J+${p.jour}`;
   });
-
-  // La confirmation ne vient pas d'un palier : elle part au règlement d'un
-  // renouvellement. Elle est listée parce qu'elle est promise — et elle est
-  // promise parce que `finaliserRenouvellement` la pousse pour de vrai.
-  return [...libelles, "CONFIRMATION"];
 }

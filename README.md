@@ -103,6 +103,19 @@ Puis un passage par jour. Il peut rater son tour : l'état se **déduit** des
 dates, il n'est jamais stocké — un jour sauté ne laisse rien de faux derrière
 lui.
 
+Quand un paiement est confirmé, l'hôte enchaîne le cycle :
+
+```ts
+import { finaliserRenouvellement } from "./src/moteur";
+
+const suivant = await finaliserRenouvellement(ports, abonnement, new Date());
+```
+
+Le cycle repart de l'**échéance** et non de la date de paiement — sauf si
+l'accès était déjà perdu, auquel cas facturer une période écoulée n'aurait
+aucun sens. Aucune notification ne part d'ici : le moteur ne parle qu'au moment
+de relancer, et un hôte qui veut confirmer un paiement le fait chez lui.
+
 ## Un helper pour ceux qui branchent un SMS
 
 `src/gsm7.ts` ne fait pas partie du cœur — le moteur ne l'importe pas. Il est
@@ -138,9 +151,15 @@ if (perdus.length > 0) { /* replier sur autre chose que le nom */ }
 
 ## Ce que Ndank ne fait pas
 
-**Il n'encaisse pas.** Il décide qui relancer et quand ; le paiement lui-même
+**Il n'encaisse pas.** Il décide qui relancer et quand, et il sait enchaîner le
+cycle une fois qu'on lui dit qu'un paiement est arrivé ; le paiement lui-même
 appartient à l'hôte, qui a déjà son opérateur. Ndank ne veut pas devenir un
 prestataire de paiement de plus.
+
+**Il ne confirme pas.** Le moteur ne parle qu'au moment de relancer. Un accusé
+de paiement est un message que l'hôte envoie avec ses propres mots, sur ses
+propres canaux — l'annoncer ici ferait promettre à l'écran ce que le module ne
+tient pas.
 
 **Il ne stocke rien.** Aucune base, aucun fichier, aucune dépendance. Le cœur
 est pur — c'est ce qui permet d'éprouver « un passage qui a raté trois jours

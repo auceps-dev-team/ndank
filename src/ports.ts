@@ -119,7 +119,13 @@ export interface Ecriture {
   /** Clôt définitivement. Appelée tant que l'abonnement reste clos. */
   clore(abonnementId: string): Promise<void>;
 
-  /** Enregistre le nouveau cycle après un paiement confirmé. */
+  /**
+   * Enregistre le nouveau cycle après un paiement confirmé.
+   *
+   * Appelée par `finaliserRenouvellement`, qui calcule le cycle suivant. Ndank
+   * n'encaisse pas : c'est l'hôte qui constate le paiement, puis appelle cette
+   * fonction-là pour que le rythme reparte au bon endroit.
+   */
   renouveler(abonnementId: string, cycle: Cycle): Promise<void>;
 }
 

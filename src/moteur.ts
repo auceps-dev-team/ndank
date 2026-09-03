@@ -1,4 +1,11 @@
-import { ajouterJours, cleDeCycle, joursEntre } from "./cycle";
+import {
+  ajouterJours,
+  cleDeCycle,
+  cycleSuivant,
+  joursEntre,
+  type Cycle,
+  type Reglages,
+} from "./cycle";
 import {
   canauxDuPalier,
   etatDe,
@@ -211,6 +218,41 @@ export async function passer(
   }
 
   return bilan;
+}
+
+/**
+ * Enchaîne le cycle suivant, une fois le paiement confirmé.
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ * NDANK N'ENCAISSE TOUJOURS PAS
+ *
+ * L'hôte constate le paiement — il a déjà son opérateur — puis appelle ceci
+ * pour que le rythme reparte au bon endroit. C'est tout ce que le moteur a
+ * besoin d'en savoir, et c'est ce qui donne enfin un appelant au port
+ * `renouveler`, jusqu'ici déclaré et jamais utilisé.
+ *
+ * Le cycle s'enchaîne sur l'échéance et non sur la date de paiement, sauf quand
+ * l'accès était déjà perdu : `cycleSuivant` porte la règle et son exception.
+ *
+ * Aucune notification ne part d'ici. Le moteur ne parle qu'au moment de
+ * relancer ; l'hôte qui veut confirmer un paiement le fait chez lui.
+ */
+export async function finaliserRenouvellement(
+  ports: Ports,
+  abonnement: AbonnementLu,
+  paiement: Date,
+  reglages?: Reglages,
+): Promise<Cycle> {
+  const suivant = cycleSuivant(
+    abonnement.cycle,
+    paiement,
+    abonnement.cadence,
+    reglages,
+  );
+
+  await ports.ecriture.renouveler(abonnement.id, suivant);
+
+  return suivant;
 }
 
 /**

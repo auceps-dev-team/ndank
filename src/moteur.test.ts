@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { ajouterJours, cycleApresPaiement, type Cycle } from "./cycle";
-import { apercuDe, passer } from "./moteur";
+import {
+  ajouterJours,
+  cycleApresPaiement,
+  joursEntre,
+  type Cycle,
+} from "./cycle";
+import { apercuDe, finaliserRenouvellement, passer } from "./moteur";
 import type {
   AbonnementLu,
   Canal,
@@ -31,6 +36,7 @@ function faussePorts(
   const notees: Array<{ id: string; cle: string; canaux: readonly Canal[] }> = [];
   const suspendus: string[] = [];
   const clos: string[] = [];
+  const renouveles: Array<{ id: string; cycle: Cycle }> = [];
 
   const marchent = options.canauxQuiMarchent ?? ["courriel", "sms", "push"];
   const ou: Coordonnees = options.coordonnees ?? {
@@ -62,7 +68,9 @@ function faussePorts(
       async clore(id) {
         clos.push(id);
       },
-      async renouveler() {},
+      async renouveler(id, cycle) {
+        renouveles.push({ id, cycle });
+      },
     },
     envoi: {
       disponible(canal, coord) {
@@ -78,7 +86,7 @@ function faussePorts(
     },
   };
 
-  return { ports, envois, notees, suspendus, clos };
+  return { ports, envois, notees, suspendus, clos, renouveles };
 }
 
 function abonnement(cycle?: Partial<Cycle>): AbonnementLu {
@@ -252,6 +260,52 @@ describe("le passage quotidien", () => {
     const bilan = await passer(f.ports, REGLAGES, DEPART);
 
     expect(bilan.vus).toBe(2);
+  });
+});
+
+describe("le renouvellement", () => {
+  it("enchaîne le cycle et l'écrit par le port", async () => {
+    // `Ecriture.renouveler` était déclaré et jamais appelé : chaque hôte devait
+    // l'implémenter pour rien. C'est ce chemin-là qui lui donne un sens.
+    const a = abonnement();
+    const f = faussePorts([a]);
+
+    const suivant = await finaliserRenouvellement(
+      f.ports,
+      a,
+      ajouterJours(a.cycle.echeance, 3),
+    );
+
+    expect(f.renouveles).toHaveLength(1);
+    expect(f.renouveles[0]!.id).toBe("ab-1");
+    expect(f.renouveles[0]!.cycle.echeance.getTime()).toBe(
+      suivant.echeance.getTime(),
+    );
+  });
+
+  it("garde le rythme d'un abonné qui paie en retard", async () => {
+    // La règle de `cycleSuivant`, vue depuis le moteur : on enchaîne sur
+    // l'échéance, donc trois jours de retard ne décalent pas la suivante.
+    const a = abonnement();
+    const f = faussePorts([a]);
+
+    const suivant = await finaliserRenouvellement(
+      f.ports,
+      a,
+      ajouterJours(a.cycle.echeance, 3),
+    );
+
+    expect(joursEntre(a.cycle.echeance, suivant.echeance)).toBe(30);
+  });
+
+  it("repart du paiement quand l'accès était déjà perdu", async () => {
+    const a = abonnement();
+    const f = faussePorts([a]);
+    const tard = ajouterJours(a.cycle.accesJusquA, 10);
+
+    const suivant = await finaliserRenouvellement(f.ports, a, tard);
+
+    expect(joursEntre(tard, suivant.echeance)).toBe(30);
   });
 });
 
