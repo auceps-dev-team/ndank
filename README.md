@@ -64,7 +64,7 @@ opaques — Ndank ne les interprète jamais. Un abonnement push réel porte des
 clés de chiffrement, et elles n'ont aucune raison de traverser un module qui ne
 décide que de qui relancer.
 
-## Deux garde-fous
+## Trois garde-fous
 
 **Un passage qui a raté trois jours n'envoie qu'une relance**, la plus avancée.
 Rattraper avec trois messages d'affilée fait désinstaller l'application.
@@ -72,6 +72,17 @@ Rattraper avec trois messages d'affilée fait désinstaller l'application.
 **Une relance jamais partie n'est pas notée.** Sinon une panne d'un jour coupe
 l'accès de quelqu'un qu'on n'a jamais prévenu, et le lendemain le moteur croit
 l'avoir fait.
+
+**Un abonnement qui échoue n'emporte pas le lot.** Chaque abonnement est
+rattrapé séparément et noté dans `bilan.echecs` avec sa cause. Sans cela, une
+ligne corrompue ou une passerelle en délai d'attente arrête le passage entier —
+ni relance ni suspension pour tous ceux qui suivent, et comme l'état se déduit
+des dates, ils reçoivent le lendemain le palier le plus avancé : pour certains,
+un SMS payant à la place du courriel gratuit de la veille.
+
+Le passage mène ses **lectures** par grappes bornées, mais garde ses **envois**
+strictement en série : une passerelle SMS limitée en débit refuserait une
+rafale, et ce refus deviendrait une relance qui ne part pas.
 
 ## Trois façons de l'utiliser
 
@@ -90,18 +101,25 @@ une ligne.
 ```ts
 import { passer } from "./src/moteur";
 
-const bilan = await passer(
-  { lecture, ecriture, envoi },   // vos implémentations
-  {
-    lien: (a) => `https://exemple.com/abonnement/${a.id}/renouveler`,
-    montant: (a) => `${a.montant} ${a.devise}`,
-  },
-);
+const ports = { lecture, ecriture, envoi };   // vos implémentations
+
+const bilan = await passer(ports, {
+  lien: (a) => `https://exemple.com/abonnement/${a.id}/renouveler`,
+  montant: (a) => `${a.montant} ${a.devise}`,
+});
+
+bilan.echecs;   // ce qui n'a pas pu être traité, et pourquoi
+bilan.lotPlein; // vrai s'il restait probablement du travail
 ```
 
 Puis un passage par jour. Il peut rater son tour : l'état se **déduit** des
 dates, il n'est jamais stocké — un jour sauté ne laisse rien de faux derrière
 lui.
+
+Une seule exigence sur `Lecture.aRelancer` : **ne pas rendre ce qui est déjà
+clos.** Le moteur ne peut pas le savoir, donc il redit `clore` tant qu'il le
+voit ; sur une base qui vieillit, les morts finissent par occuper le lot — qui
+est plafonné — et par évincer les vivants.
 
 Quand un paiement est confirmé, l'hôte enchaîne le cycle :
 

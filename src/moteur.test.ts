@@ -6,7 +6,7 @@ import {
   joursEntre,
   type Cycle,
 } from "./cycle";
-import { apercuDe, finaliserRenouvellement, passer } from "./moteur";
+import { apercuDe, finaliserRenouvellement, LOT, passer } from "./moteur";
 import type {
   AbonnementLu,
   Canal,
@@ -30,6 +30,10 @@ function faussePorts(
     coordonnees?: Coordonnees;
     canauxQuiMarchent?: Canal[];
     dejaEnvoyes?: Record<string, string[]>;
+    /** Abonnements dont la lecture lève, pour éprouver le rattrapage. */
+    lecturesQuiCassent?: string[];
+    /** Abonnements dont l'écriture lève, une fois la relance partie. */
+    ecrituresQuiCassent?: string[];
   } = {},
 ) {
   const envois: Array<{ canal: Canal; message: Message }> = [];
@@ -52,6 +56,9 @@ function faussePorts(
         return abonnements;
       },
       async relancesEnvoyees(id) {
+        if (options.lecturesQuiCassent?.includes(id)) {
+          throw new Error("base indisponible");
+        }
         return options.dejaEnvoyes?.[id] ?? [];
       },
       async coordonnees() {
@@ -60,6 +67,9 @@ function faussePorts(
     },
     ecriture: {
       async noterRelance(id, cle, canaux) {
+        if (options.ecrituresQuiCassent?.includes(id)) {
+          throw new Error("écriture refusée");
+        }
         notees.push({ id, cle, canaux });
       },
       async suspendre(id) {
@@ -87,6 +97,15 @@ function faussePorts(
   };
 
   return { ports, envois, notees, suspendus, clos, renouveles };
+}
+
+/** Un abonnement dont l'échéance tombe le jour du passage. */
+function du(id: string): AbonnementLu {
+  return {
+    ...abonnement(),
+    id,
+    cycle: cycleApresPaiement(ajouterJours(DEPART, -30), "MENSUEL"),
+  };
 }
 
 function abonnement(cycle?: Partial<Cycle>): AbonnementLu {
@@ -249,17 +268,55 @@ describe("le passage quotidien", () => {
   });
 
   it("traite plusieurs abonnements sans qu'un échec emporte les autres", async () => {
-    const tranquille = { ...abonnement(), id: "calme" };
-    const aRelancer = {
-      ...abonnement(),
-      id: "urgent",
-      cycle: cycleApresPaiement(ajouterJours(DEPART, -30), "MENSUEL"),
-    };
+    // Le test qui manquait vraiment. L'ancien montait deux abonnements sains et
+    // ne vérifiait qu'un compteur : son nom promettait une résistance que rien
+    // n'éprouvait. Ici la lecture du premier lève pour de bon.
+    const f = faussePorts([du("casse"), du("sain")], {
+      lecturesQuiCassent: ["casse"],
+    });
 
-    const f = faussePorts([tranquille, aRelancer]);
     const bilan = await passer(f.ports, REGLAGES, DEPART);
 
     expect(bilan.vus).toBe(2);
+    // Et surtout : le suivant a bien été traité.
+    expect(f.notees.map((n) => n.id)).toEqual(["sain"]);
+    expect(bilan.relances).toBe(1);
+  });
+
+  it("dit quel abonnement a échoué, et pourquoi", async () => {
+    // Compter les échecs sans dire lesquels rendrait l'incident invisible :
+    // c'est la faute que ce module reproche partout ailleurs.
+    const f = faussePorts([du("casse")], { lecturesQuiCassent: ["casse"] });
+
+    const bilan = await passer(f.ports, REGLAGES, DEPART);
+
+    expect(bilan.echecs).toHaveLength(1);
+    expect(bilan.echecs[0]!.abonnementId).toBe("casse");
+    expect((bilan.echecs[0]!.cause as Error).message).toBe("base indisponible");
+  });
+
+  it("rattrape aussi une écriture qui lève après l'envoi", async () => {
+    // L'échec peut tomber n'importe où dans le geste, pas seulement en lecture.
+    const f = faussePorts([du("casse"), du("sain")], {
+      ecrituresQuiCassent: ["casse"],
+    });
+
+    const bilan = await passer(f.ports, REGLAGES, DEPART);
+
+    expect(bilan.echecs.map((e) => e.abonnementId)).toEqual(["casse"]);
+    expect(f.notees.map((n) => n.id)).toEqual(["sain"]);
+  });
+
+  it("signale un lot plein, pour qu'un appelant sache qu'il en reste", async () => {
+    // Sans ce drapeau, une base plus grosse que le lot se vide silencieusement
+    // par le mauvais bout : personne ne sait qu'il restait du travail.
+    const petit = faussePorts([du("a")]);
+    expect((await passer(petit.ports, REGLAGES, DEPART)).lotPlein).toBe(false);
+
+    const plein = faussePorts(
+      Array.from({ length: LOT }, (_, i) => du(`a${i}`)),
+    );
+    expect((await passer(plein.ports, REGLAGES, DEPART)).lotPlein).toBe(true);
   });
 });
 

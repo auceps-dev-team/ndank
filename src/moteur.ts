@@ -12,6 +12,7 @@ import {
   gesteDuJour,
   PALIERS,
   PREAVIS_JOURS,
+  type Geste,
 } from "./etats";
 import type {
   AbonnementLu,
@@ -46,6 +47,12 @@ import type {
  * désinstaller l'application.
  */
 
+/** Un abonnement qu'une erreur a empêché de traiter, et ce qui l'a causée. */
+export interface Incident {
+  abonnementId: string;
+  cause: unknown;
+}
+
 export interface Passage {
   /** Abonnements examinés. */
   vus: number;
@@ -54,10 +61,35 @@ export interface Passage {
   clos: number;
   /** Abonnés qu'on ne sait plus joindre. C'est un incident, pas une statistique. */
   injoignables: number;
+  /**
+   * Ceux qu'une erreur a fait sauter. Le passage continue sans eux.
+   *
+   * On garde la cause et pas seulement un compte : un module qui reproche
+   * partout ailleurs les pannes muettes ne peut pas avaler les siennes.
+   */
+  echecs: Incident[];
+  /**
+   * Vrai si le lot était plein — il restait donc probablement du travail.
+   *
+   * Sans ce drapeau, une base plus grosse que `LOT` se vide silencieusement par
+   * le mauvais bout, et personne ne sait qu'il fallait repasser.
+   */
+  lotPlein: boolean;
 }
 
 /** Un passage ne traite pas cent mille abonnements d'un coup. */
-const LOT = 500;
+export const LOT = 500;
+
+/**
+ * Combien de lectures mener de front.
+ *
+ * Les lectures d'un passage sont indépendantes : les attendre une par une fait
+ * passer le temps du lot en allers-retours. Les envois, eux, restent en série —
+ * une passerelle SMS limitée en débit refuserait huit messages simultanés, et
+ * ce refus deviendrait un échec compté, c'est-à-dire une relance qui ne part
+ * pas. On accélère donc ce qui est sans risque, et rien d'autre.
+ */
+const LECTURES_EN_PARALLELE = 8;
 
 /**
  * Jusqu'où regarder devant soi.
@@ -111,6 +143,10 @@ function messagePour(input: {
  * L'ordre du palier est délibéré : le gratuit d'abord, le SMS en dernier. Sur
  * mille abonnés mensuels, relancer par SMS trois jours avant coûterait mille
  * SMS par mois pour des gens qui auraient payé de toute façon.
+ *
+ * Les envois restent strictement en série, y compris d'un abonnement à l'autre :
+ * une passerelle SMS limitée en débit refuserait une rafale, et ce refus-là
+ * deviendrait une relance qui ne part pas.
  */
 async function relancer(
   ports: Ports,
@@ -132,41 +168,66 @@ async function relancer(
   return partis;
 }
 
+/** Ce que l'hôte fournit pour rédiger : où valider, et comment écrire un montant. */
+export interface Redaction {
+  /** Où l'abonné ira valider. Dépend de l'hôte, donc fournie. */
+  lien: (abonnement: AbonnementLu) => string;
+  /** Le montant écrit comme l'hôte l'écrit. Idem. */
+  montant: (abonnement: AbonnementLu) => string;
+}
+
+/** Ce qu'un abonnement a donné à la lecture, avant qu'on agisse. */
+type Prepare =
+  | { ok: true; abonnement: AbonnementLu; geste: Geste; ou: Coordonnees | null }
+  | { ok: false; abonnement: AbonnementLu; cause: unknown };
+
 /**
- * Fait un tour, et rend ce qu'il a fait.
+ * Applique `travail` à chaque élément, au plus `largeur` à la fois.
  *
- * `lienDeValidation` construit l'adresse où l'abonné ira payer. Elle dépend de
- * l'hôte — Baobart n'a pas les mêmes URL qu'un autre projet — donc elle est
- * fournie, pas devinée.
+ * `travail` ne doit jamais lever : un rejet ici emporterait la grappe entière,
+ * ce qui est précisément ce qu'on cherche à empêcher.
  */
-export async function passer(
-  ports: Ports,
-  reglages: {
-    /** Où l'abonné ira valider. Dépend de l'hôte, donc fournie. */
-    lien: (abonnement: AbonnementLu) => string;
-    /** Le montant écrit comme l'hôte l'écrit. Idem. */
-    montant: (abonnement: AbonnementLu) => string;
-  },
-  maintenant: Date = new Date(),
-): Promise<Passage> {
-  const bilan: Passage = {
-    vus: 0,
-    relances: 0,
-    suspendus: 0,
-    clos: 0,
-    injoignables: 0,
+async function parGrappes<T, R>(
+  items: readonly T[],
+  largeur: number,
+  travail: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const sorties = new Array<R>(items.length);
+  let prochain = 0;
+
+  const ouvrier = async (): Promise<void> => {
+    while (prochain < items.length) {
+      const i = prochain;
+      prochain += 1;
+      sorties[i] = await travail(items[i]!);
+    }
   };
 
-  const candidats = await ports.lecture.aRelancer(
-    ajouterJours(maintenant, FENETRE_JOURS),
-    LOT,
+  await Promise.all(
+    Array.from({ length: Math.min(largeur, items.length) }, ouvrier),
   );
 
-  for (const abonnement of candidats) {
-    bilan.vus += 1;
+  return sorties;
+}
 
+/**
+ * Lit ce qu'il faut savoir d'un abonnement, sans rien décider d'irréversible.
+ *
+ * Les coordonnées ne sont lues que si l'on va relancer : sur un lot où presque
+ * tout est tranquille, les lire pour tout le monde doublerait les requêtes pour
+ * rien.
+ */
+async function preparer(
+  ports: Ports,
+  abonnement: AbonnementLu,
+  maintenant: Date,
+): Promise<Prepare> {
+  try {
     const dejaEnvoyes = new Set(
-      await ports.lecture.relancesEnvoyees(abonnement.id),
+      await ports.lecture.relancesEnvoyees(
+        abonnement.id,
+        cleDeCycle(abonnement.cycle.echeance),
+      ),
     );
 
     const geste = gesteDuJour(
@@ -175,46 +236,133 @@ export async function passer(
       dejaEnvoyes,
     );
 
-    if (geste.faire === "RIEN") continue;
+    const ou =
+      geste.faire === "RAPPELER"
+        ? await ports.lecture.coordonnees(abonnement.abonneId)
+        : null;
 
-    if (geste.faire === "SUSPENDRE") {
-      await ports.ecriture.suspendre(abonnement.id);
-      bilan.suspendus += 1;
+    return { ok: true, abonnement, geste, ou };
+  } catch (cause) {
+    return { ok: false, abonnement, cause };
+  }
+}
+
+/** Exécute le geste décidé. Peut lever — l'appelant rattrape. */
+async function agir(
+  ports: Ports,
+  redaction: Redaction,
+  prete: Extract<Prepare, { ok: true }>,
+  maintenant: Date,
+  bilan: Passage,
+): Promise<void> {
+  const { abonnement, geste } = prete;
+
+  if (geste.faire === "RIEN") return;
+
+  if (geste.faire === "SUSPENDRE") {
+    await ports.ecriture.suspendre(abonnement.id);
+    bilan.suspendus += 1;
+    return;
+  }
+
+  if (geste.faire === "CLORE") {
+    await ports.ecriture.clore(abonnement.id);
+    bilan.clos += 1;
+    return;
+  }
+
+  const ou = prete.ou ?? (await ports.lecture.coordonnees(abonnement.abonneId));
+
+  const partis = await relancer(
+    ports,
+    ou,
+    geste.palier,
+    messagePour({
+      abonnement,
+      palier: geste.palier,
+      cle: geste.cle,
+      lien: redaction.lien(abonnement),
+      nom: ou.nom ?? abonnement.libelle,
+      montantLisible: redaction.montant(abonnement),
+      maintenant,
+    }),
+  );
+
+  if (partis.length === 0) {
+    // On ne note PAS la relance : ne rien avoir envoyé ne doit pas empêcher
+    // de réessayer demain. Sans cela, une panne d'un jour couperait l'accès
+    // à quelqu'un qu'on n'a jamais prévenu.
+    bilan.injoignables += 1;
+    return;
+  }
+
+  await ports.ecriture.noterRelance(abonnement.id, geste.cle, partis);
+  bilan.relances += 1;
+}
+
+/**
+ * Fait un tour, et rend ce qu'il a fait.
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ * UN ABONNEMENT QUI ÉCHOUE N'EMPORTE PAS LE LOT
+ *
+ * Chaque abonnement est rattrapé séparément, et l'incident est noté dans
+ * `bilan.echecs` avec sa cause. Sans cela, une ligne corrompue ou une passerelle
+ * en délai d'attente arrêtait le passage entier : ni relance ni suspension pour
+ * tous ceux qui suivaient dans le lot. Et comme l'état se déduit des dates, ils
+ * recevaient le lendemain le palier le plus avancé — donc, pour certains, un SMS
+ * payant à la place du courriel gratuit de la veille.
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ * LECTURES DE FRONT, ENVOIS EN SÉRIE
+ *
+ * Les lectures ne décident de rien : elles se mènent par grappes bornées. Les
+ * envois et les écritures restent séquentiels, dans l'ordre du lot.
+ */
+export async function passer(
+  ports: Ports,
+  redaction: Redaction,
+  maintenant: Date = new Date(),
+): Promise<Passage> {
+  const bilan: Passage = {
+    vus: 0,
+    relances: 0,
+    suspendus: 0,
+    clos: 0,
+    injoignables: 0,
+    echecs: [],
+    lotPlein: false,
+  };
+
+  const candidats = await ports.lecture.aRelancer(
+    ajouterJours(maintenant, FENETRE_JOURS),
+    LOT,
+  );
+
+  bilan.lotPlein = candidats.length >= LOT;
+
+  const preparees = await parGrappes(
+    candidats,
+    LECTURES_EN_PARALLELE,
+    (abonnement) => preparer(ports, abonnement, maintenant),
+  );
+
+  for (const prete of preparees) {
+    bilan.vus += 1;
+
+    if (!prete.ok) {
+      bilan.echecs.push({
+        abonnementId: prete.abonnement.id,
+        cause: prete.cause,
+      });
       continue;
     }
 
-    if (geste.faire === "CLORE") {
-      await ports.ecriture.clore(abonnement.id);
-      bilan.clos += 1;
-      continue;
+    try {
+      await agir(ports, redaction, prete, maintenant, bilan);
+    } catch (cause) {
+      bilan.echecs.push({ abonnementId: prete.abonnement.id, cause });
     }
-
-    const ou = await ports.lecture.coordonnees(abonnement.abonneId);
-    const partis = await relancer(
-      ports,
-      ou,
-      geste.palier,
-      messagePour({
-        abonnement,
-        palier: geste.palier,
-        cle: geste.cle,
-        lien: reglages.lien(abonnement),
-        nom: ou.nom ?? abonnement.libelle,
-        montantLisible: reglages.montant(abonnement),
-        maintenant,
-      }),
-    );
-
-    if (partis.length === 0) {
-      // On ne note PAS la relance : ne rien avoir envoyé ne doit pas empêcher
-      // de réessayer demain. Sans cela, une panne d'un jour couperait l'accès
-      // à quelqu'un qu'on n'a jamais prévenu.
-      bilan.injoignables += 1;
-      continue;
-    }
-
-    await ports.ecriture.noterRelance(abonnement.id, geste.cle, partis);
-    bilan.relances += 1;
   }
 
   return bilan;

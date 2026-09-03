@@ -89,11 +89,30 @@ export interface Lecture {
    * L'hôte filtre comme il peut — un index sur l'échéance suffit. Rendre trop
    * d'abonnements ne casse rien : le moteur dira « rien à faire ». En rendre
    * trop peu, si.
+   *
+   * ─────────────────────────────────────────────────────────────────────
+   * NE PAS RENDRE CE QUI EST DÉJÀ CLOS
+   *
+   * C'est la seule exigence de cette méthode, et elle n'est pas cosmétique.
+   * Le moteur ne peut pas savoir qu'un abonnement est déjà clos : il redit
+   * `clore` tant qu'il le voit, chaque jour, indéfiniment. Sur une base qui
+   * vieillit, les morts finissent par occuper le lot — qui est plafonné — et
+   * par évincer les vivants. Personne ne s'en aperçoit avant la deuxième ou
+   * troisième année.
+   *
+   * Une clause « et pas encore clos » sur la requête suffit à l'éviter.
    */
   aRelancer(avant: Date, limite: number): Promise<AbonnementLu[]>;
 
-  /** Les clés de relance déjà parties pour cet abonnement. */
-  relancesEnvoyees(abonnementId: string): Promise<string[]>;
+  /**
+   * Les clés de relance déjà parties pour cet abonnement.
+   *
+   * `cycle` est la clé du cycle en cours, la seule que le moteur consultera.
+   * L'hôte peut s'en servir pour ne rendre que ce qui la concerne : après trois
+   * ans d'abonnement mensuel, tout rendre fait charger une centaine de clés
+   * chaque matin pour n'en regarder qu'une. L'ignorer reste correct.
+   */
+  relancesEnvoyees(abonnementId: string, cycle: string): Promise<string[]>;
 
   coordonnees(abonneId: string): Promise<Coordonnees>;
 }
