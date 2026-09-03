@@ -1,0 +1,454 @@
+// Ndank — niveau 2 : le schéma fourni.
+//
+// ════════════════════════════════════════════════════════════════════════════
+// CE QUE CE FICHIER EST, ET CE QU'IL N'EST PAS
+//
+// Le niveau 1 de Ndank ne connaît aucune base : l'hôte implémente `Lecture`,
+// `Ecriture` et `Envoi` contre la sienne. C'est le plus souple, et c'est du
+// câblage.
+//
+// Ce schéma est le niveau 2 : les tables toutes faites, pour qui accepte
+// Prisma et PostgreSQL. Il ne remplace pas les ports — il les implémente. Le
+// cœur reste rigoureusement le même, et c'est pour cela que les deux niveaux
+// ne dupliquent pas une ligne de logique.
+//
+// ════════════════════════════════════════════════════════════════════════════
+// IL N'Y A PAS DE COLONNE « ÉTAT », ET C'EST DÉLIBÉRÉ
+//
+// C'est la première chose que quelqu'un voudra ajouter, alors autant l'écrire
+// ici : **ACTIVE, A_RENOUVELER, SUSPENDUE, EXPIREE ne sont pas stockés.** Ils
+// se déduisent de deux dates et de l'instant présent, par `etatDe`.
+//
+// Un état rangé en base se désynchronise. Il faudrait un passage pour faire
+// vieillir chaque abonnement à la seconde près, et le jour où ce passage rate
+// son tour — panne, déploiement, week-end — des abonnés gardent un accès qu'ils
+// n'ont plus payé, ou perdent celui qu'ils ont payé.
+//
+// Ce que cette base garde, ce sont les **faits** : quand on a été payé, quand
+// on a relancé, quand l'abonné a résilié, quand le dossier a été clos. Pas les
+// conclusions.
+//
+// ════════════════════════════════════════════════════════════════════════════
+// LES SECRETS DES FOURNISSEURS NE SONT PAS ICI
+//
+// Aucune table ne porte de clé d'API. Elles viennent de l'environnement, et
+// c'est un choix : une base est sauvegardée, répliquée, exportée pour un
+// rapport, restaurée sur un poste de développement. Une clé secrète Flutterwave
+// qui suit ce chemin est une clé compromise, et personne ne s'en aperçoit.
+//
+// Le niveau 3 — le service hébergé — devra bien les stocker quelque part. Ce
+// sera dans un coffre, pas dans ce fichier.
+//
+// ════════════════════════════════════════════════════════════════════════════
+// L'ARGENT EST EN ENTIERS, EN UNITÉS MINEURES
+//
+// `Int`, jamais `Float`, jamais `Decimal`. Deux mille francs CFA s'écrivent
+// `2000` — le XOF n'a pas de subdivision en circulation. Un naira s'écrit en
+// kobo, un cedi en pesewas.
+//
+// C'est aussi ce que les fournisseurs attendent, et ce que le cœur manipule :
+// une seule convention du bout en bout, donc aucune conversion à oublier.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ════════════════════════════════════════════════════════════════ énumérés ══
+
+enum Cadence {
+  HEBDOMADAIRE
+  MENSUEL
+  TRIMESTRIEL
+  ANNUEL
+}
+
+/// Comment traiter un versement qui ne solde pas l'échéance.
+/// C'est l'abonné qui choisit, abonnement par abonnement.
+enum Politique {
+  /// Rien ne s'enchaîne tant que le compte n'y est pas.
+  CREDIT
+  /// Ce qui est payé donne du temps immédiatement, au prorata.
+  PRORATA
+}
+
+enum Canal {
+  courriel
+  sms
+  push
+}
+
+/// Les états d'un encaissement, tels que la couche les normalise.
+/// `INCONNU` n'est pas un échec : c'est un état qu'on ne sait pas lire, et il
+/// ne faut surtout pas en conclure que l'abonné n'a pas payé.
+enum EtatEncaissement {
+  EN_ATTENTE
+  REUSSI
+  ECHOUE
+  EXPIRE
+  INCONNU
+}
+
+// ════════════════════════════════════════════════════════════════ le projet ══
+
+/// L'application hôte. Tout est cloisonné par projet — c'est ce qui permet au
+/// tableau de bord de montrer à chaque équipe ses abonnements et rien d'autre.
+model Projet {
+  id                   String  @id @default(cuid())
+  nom                  String
+  /// Le fournisseur d'encaissement à utiliser par défaut. Les identifiants,
+  /// eux, viennent de l'environnement — voir l'en-tête de ce fichier.
+  fournisseurParDefaut String?
+
+  /// Jours d'accès maintenus au-delà de l'échéance. Sept par défaut : en
+  /// dessous de trois, un abonné parti en week-end perd son accès.
+  graceJours   Int @default(7)
+  /// Jours pendant lesquels un abonnement suspendu peut encore reprendre.
+  repriseJours Int @default(30)
+
+  creeLe DateTime @default(now())
+  majLe  DateTime @updatedAt
+
+  offres      Offre[]
+  abonnes     Abonne[]
+  abonnements Abonnement[]
+  evenements  Evenement[]
+
+  @@map("projet")
+}
+
+/// Ce à quoi on s'abonne. Un gabarit, pas une source de vérité pour les
+/// abonnements en cours — voir la dénormalisation dans `Abonnement`.
+model Offre {
+  id       String @id @default(cuid())
+  projetId String
+  projet   Projet @relation(fields: [projetId], references: [id], onDelete: Cascade)
+
+  libelle String
+  /// En unités mineures. 2 000 F CFA s'écrit 2000.
+  montant Int
+  devise  String  @db.VarChar(3)
+  cadence Cadence
+
+  actif Boolean @default(true)
+
+  creeLe DateTime @default(now())
+  majLe  DateTime @updatedAt
+
+  abonnements Abonnement[]
+
+  @@index([projetId, actif])
+  @@map("offre")
+}
+
+// ═══════════════════════════════════════════════════════════════ les gens ══
+
+/// L'abonné, dans les termes de l'hôte.
+model Abonne {
+  id       String @id @default(cuid())
+  projetId String
+  projet   Projet @relation(fields: [projetId], references: [id], onDelete: Cascade)
+
+  /// L'identifiant que l'hôte lui donne chez lui. C'est par là qu'il le
+  /// retrouvera, et c'est ce qui rend la table réconciliable avec la sienne.
+  reference String
+
+  /// `null` quand on ne sait pas : on dira « Bonjour ».
+  nom       String?
+  courriel  String?
+  telephone String?
+
+  /// Les appareils où la notification peut arriver.
+  ///
+  /// Une liste, et non un jeton : quelqu'un installe l'application sur son
+  /// téléphone ET sur son ordinateur, et n'en garder qu'un ferait arriver la
+  /// relance sur celui resté dans un tiroir.
+  ///
+  /// Ce sont des poignées opaques. Ndank ne les interprète jamais — un
+  /// abonnement push réel porte des clés de chiffrement, et elles n'ont aucune
+  /// raison de traverser un module qui ne décide que de qui relancer.
+  appareils String[] @default([])
+
+  creeLe DateTime @default(now())
+  majLe  DateTime @updatedAt
+
+  abonnements Abonnement[]
+
+  @@unique([projetId, reference])
+  @@index([projetId, telephone])
+  @@map("abonne")
+}
+
+// ═══════════════════════════════════════════════════════════ l'abonnement ══
+
+/// Un abonnement, avec son cycle et son ardoise.
+model Abonnement {
+  id       String @id @default(cuid())
+  projetId String
+  projet   Projet @relation(fields: [projetId], references: [id], onDelete: Cascade)
+
+  abonneId String
+  abonne   Abonne @relation(fields: [abonneId], references: [id], onDelete: Cascade)
+
+  /// L'offre d'origine. Nullable : un abonnement doit survivre à la
+  /// suppression de son offre plutôt que de disparaître avec elle.
+  offreId String?
+  offre   Offre?  @relation(fields: [offreId], references: [id], onDelete: SetNull)
+
+  // ── le prix, recopié depuis l'offre ────────────────────────────────────
+  //
+  // Dénormalisé délibérément. Si l'abonnement lisait le prix de l'offre,
+  // augmenter le tarif changerait rétroactivement ce que doivent tous les
+  // abonnés en cours — y compris pour un cycle déjà à moitié payé. On recopie
+  // donc au moment de la souscription, et un changement de tarif ne s'applique
+  // qu'aux nouveaux.
+  libelle String
+  montant Int
+  devise  String  @db.VarChar(3)
+  cadence Cadence
+
+  // ── les deux horloges ──────────────────────────────────────────────────
+  //
+  // L'échéance dit quand le paiement est dû ; l'accès dit jusqu'à quand le
+  // service tient. Les confondre rend un système d'abonnement insupportable :
+  // soit on coupe trop tôt, soit on offre le service.
+  //
+  // Toutes ces dates sont à minuit UTC. Un abonnement ne doit pas changer de
+  // jour selon le fuseau du serveur qui exécute le passage.
+  debut         DateTime @db.Date
+  echeance      DateTime @db.Date
+  accesJusquA   DateTime @db.Date
+  repriseJusquA DateTime @db.Date
+
+  // ── les faits, et rien que les faits ───────────────────────────────────
+  /// Posée quand l'abonné résilie. Elle l'emporte sur tout le reste.
+  resilieeLe DateTime?
+  /// Posée quand le moteur a clos le dossier.
+  ///
+  /// Cette colonne n'est pas décorative : le contrat de `aRelancer` exige de
+  /// **ne pas rendre ce qui est déjà clos**. Le moteur ne peut pas le savoir,
+  /// donc il redit `clore` tant qu'il voit l'abonnement, chaque jour,
+  /// indéfiniment. Sur une base qui vieillit, les morts finissent par occuper
+  /// le lot — qui est plafonné — et par évincer les vivants.
+  closLe     DateTime?
+
+  // ── l'ardoise, pour le paiement en plusieurs fois ──────────────────────
+  //
+  // Deux cumuls, et surtout pas un solde. Arrondir à chaque versement ferait
+  // perdre moins d'un franc à chaque fois — et un jour entier au bout de
+  // trente. En gardant le total versé et les jours déjà accordés, l'arrondi
+  // n'a lieu qu'une fois, contre le cumul.
+  politique     Politique @default(CREDIT)
+  /// Tout ce qui a été versé depuis le dernier solde exact.
+  verse         Int       @default(0)
+  /// Les jours déjà accordés au titre de ces versements.
+  joursAccordes Int       @default(0)
+  /// Combien de versements ont été comptés depuis le dernier solde. Sert à
+  /// numéroter la référence du suivant : `2026-02-09#1`, `#2`.
+  versements    Int       @default(0)
+
+  creeLe DateTime @default(now())
+  majLe  DateTime @updatedAt
+
+  relances    Relance[]
+  invitations Invitation[]
+  paiements   Versement[]
+  evenements  Evenement[]
+
+  /// L'index qui porte le passage quotidien.
+  ///
+  /// `aRelancer` cherche les abonnements d'un projet, non clos, dont l'échéance
+  /// tombe avant une date. Sans cet index, la requête parcourt toute la table
+  /// chaque matin, et finit par tomber en délai d'attente.
+  @@index([projetId, closLe, echeance])
+  @@index([abonneId])
+  @@map("abonnement")
+}
+
+// ═══════════════════════════════════════════════════════════ les relances ══
+
+/// Une relance partie. Ce qui empêche de la renvoyer demain.
+model Relance {
+  id           String     @id @default(cuid())
+  abonnementId String
+  abonnement   Abonnement @relation(fields: [abonnementId], references: [id], onDelete: Cascade)
+
+  /// La clé de relance : cycle et palier, `2026-02-09:0`.
+  ///
+  /// Elle dépend du cycle et du palier, jamais de la date du jour — sans quoi
+  /// le même rappel repartirait chaque matin et l'abonné recevrait sept SMS
+  /// pour une seule échéance.
+  cle String
+
+  /// Les canaux par lesquels elle est effectivement partie.
+  canaux Canal[]
+
+  envoyeeLe DateTime @default(now())
+
+  /// L'unicité qui rend `noterRelance` idempotent au niveau de la base, et non
+  /// au niveau d'une intention. Deux passages simultanés ne peuvent pas noter
+  /// deux fois la même relance.
+  @@unique([abonnementId, cle])
+  @@index([abonnementId, envoyeeLe])
+  @@map("relance")
+}
+
+// ══════════════════════════════════════════════════════════ l'encaissement ══
+
+/// Une demande de paiement envoyée à un fournisseur.
+///
+/// Stockée parce que Ndank héberge la page de validation : quand l'abonné
+/// arrive dessus, c'est par cette table qu'on retrouve quoi lui montrer.
+model Invitation {
+  id           String     @id @default(cuid())
+  abonnementId String
+  abonnement   Abonnement @relation(fields: [abonnementId], references: [id], onDelete: Cascade)
+
+  /// La référence transmise au fournisseur : `2026-02-09#1`.
+  ///
+  /// Elle porte la clé du cycle **et** le numéro du versement. Payer en
+  /// plusieurs fois oblige à demander plusieurs paiements pour une même
+  /// échéance ; or cette référence sert de clé d'idempotence chez le
+  /// fournisseur. Réutiliser la seule clé de cycle ferait reconnaître le
+  /// premier versement, et le second n'aurait jamais lieu.
+  reference String @unique
+
+  fournisseur            String
+  /// L'identifiant de la charge chez le fournisseur, quand il en donne un.
+  identifiantFournisseur String?
+
+  /// Où envoyer l'abonné. `null` quand le fournisseur pousse directement sur
+  /// le téléphone — c'est le cas du `RequestToPay` de MTN.
+  url         String?
+  /// Ce qu'il faut afficher quand il n'y a pas d'URL.
+  instruction String?
+
+  /// Ce qui était demandé. Recopié pour que la page de validation n'ait pas à
+  /// remonter jusqu'à l'abonnement, et pour garder trace si le prix change.
+  montant Int
+  devise  String @db.VarChar(3)
+
+  etat EtatEncaissement @default(EN_ATTENTE)
+
+  creeLe   DateTime  @default(now())
+  expireLe DateTime?
+
+  paiements Versement[]
+
+  @@index([abonnementId, creeLe])
+  @@index([etat, creeLe])
+  @@map("invitation")
+}
+
+/// Un versement constaté auprès du fournisseur.
+model Versement {
+  id           String     @id @default(cuid())
+  abonnementId String
+  abonnement   Abonnement @relation(fields: [abonnementId], references: [id], onDelete: Cascade)
+
+  invitationId String?
+  invitation   Invitation? @relation(fields: [invitationId], references: [id], onDelete: SetNull)
+
+  fournisseur            String
+  /// L'identifiant de la charge chez le fournisseur.
+  ///
+  /// C'est la clé de déduplication, et l'unicité ci-dessous en fait une
+  /// garantie de la base plutôt qu'un espoir. Paystack rejoue ses webhooks
+  /// toutes les trois minutes puis chaque heure pendant soixante-douze heures ;
+  /// Flutterwave trois fois à trente minutes. Et le même paiement arrive
+  /// souvent deux fois — une par le webhook, une par l'interrogation d'état.
+  /// Sans cette contrainte, un abonné qui paie une fois verrait son échéance
+  /// avancer de trois mois.
+  identifiantFournisseur String
+
+  /// La référence du versement, `2026-02-09#1`.
+  reference String
+
+  montant Int
+  devise  String           @db.VarChar(3)
+  etat    EtatEncaissement
+
+  /// L'horodatage du fournisseur, quand il en donne un.
+  regleLe  DateTime?
+  /// Quand Ndank l'a compté. `null` tant qu'il ne l'a pas été.
+  compteLe DateTime?
+
+  /// La réponse brute du fournisseur, conservée telle quelle.
+  ///
+  /// Le jour où un opérateur changera un code sans prévenir, c'est ce champ
+  /// qui permettra de comprendre — et non une reconstitution à partir des cinq
+  /// états normalisés.
+  brut Json?
+
+  creeLe DateTime @default(now())
+
+  @@unique([fournisseur, identifiantFournisseur])
+  @@index([abonnementId, creeLe])
+  @@index([reference])
+  @@map("versement")
+}
+
+/// Un webhook reçu, gardé tel qu'il est arrivé.
+///
+/// Ce n'est pas de la comptabilité, c'est de quoi répondre à « le paiement
+/// n'est jamais arrivé ». Sans cette table, un webhook mal signé ou mal lu ne
+/// laisse aucune trace, et l'on n'a rien à opposer à un abonné qui a bien payé.
+model WebhookRecu {
+  id          String @id @default(cuid())
+  fournisseur String
+
+  /// Faux quand la signature n'a pas été reconnue. On garde quand même : c'est
+  /// précisément ce qu'il faut pouvoir montrer.
+  signatureValide Boolean
+
+  /// La référence extraite, si on a su la lire.
+  reference String?
+
+  /// Le corps brut, tel que reçu. La signature porte sur ces octets-là.
+  corps String
+
+  recuLe   DateTime  @default(now())
+  traiteLe DateTime?
+  /// Ce qui a été décidé, ou pourquoi rien ne l'a été.
+  issue    String?
+
+  @@index([fournisseur, recuLe])
+  @@index([reference])
+  @@map("webhook_recu")
+}
+
+// ════════════════════════════════════════════════════════════ le journal ══
+
+/// Ce qui s'est passé, pour le tableau de bord.
+///
+/// Le tableau de bord ne lit pas les tables ci-dessus : il passe par l'API que
+/// le SDK expose, de sorte qu'aucune manipulation depuis l'écran ne puisse
+/// toucher un abonnement. Cette table est ce qu'il affiche.
+///
+/// C'est aussi ici que se journalisent les gestes que le moteur répète —
+/// suspension, clôture — sans qu'ils deviennent pour autant un état stocké.
+model Evenement {
+  id       String @id @default(cuid())
+  projetId String
+  projet   Projet @relation(fields: [projetId], references: [id], onDelete: Cascade)
+
+  abonnementId String?
+  abonnement   Abonnement? @relation(fields: [abonnementId], references: [id], onDelete: Cascade)
+
+  /// `relance.envoyee`, `abonnement.suspendu`, `abonnement.clos`,
+  /// `versement.compte`, `passage.incident`…
+  type String
+
+  detail Json?
+
+  quandLe DateTime @default(now())
+
+  @@index([projetId, quandLe])
+  @@index([abonnementId, quandLe])
+  @@index([projetId, type, quandLe])
+  @@map("evenement")
+}

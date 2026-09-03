@@ -1,6 +1,6 @@
 {
   "name": "ndank",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Abonnements par mobile money, sans carte bancaire.",
   "type": "module",
   "main": "./src/moteur.ts",
@@ -23,7 +23,8 @@
   ],
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "schema": "prisma validate --schema prisma/schema.prisma"
   },
   "keywords": [
     "abonnement",
@@ -36,6 +37,7 @@
   "private": true,
   "devDependencies": {
     "@types/node": "^26.4.1",
+    "prisma": "^6.19.3",
     "typescript": "^5.9.3",
     "vitest": "^3.2.7"
   }

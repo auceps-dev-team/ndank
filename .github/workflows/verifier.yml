@@ -28,3 +28,10 @@ jobs:
       - run: npm run typecheck
 
       - run: npm test
+
+      # Le schéma du niveau 2. `validate` résout `env("DATABASE_URL")` avant
+      # d'analyser, d'où cette URL factice : rien ne s'y connecte, mais sans
+      # elle la validation échoue sur la variable plutôt que sur le schéma.
+      - run: npm run schema
+        env:
+          DATABASE_URL: postgresql://ndank:ndank@localhost:5432/ndank
