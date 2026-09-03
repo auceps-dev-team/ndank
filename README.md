@@ -124,6 +124,18 @@ const texte = replier(`Renouvelle pour ${montant} : ${lien}`);
 segments(texte); // 1 — à vérifier, pas à supposer
 ```
 
+Replier est une perte assumée, et elle peut être totale : une écriture sans
+équivalent latin disparaît en entier. Un émoji effacé n'est pas grave, un nom
+d'abonné effacé l'est — et dans la zone où Ndank tourne, ce n'est pas un cas
+d'école. Quand la perte compte, `replierAvecPertes` dit ce qu'il a supprimé :
+
+```ts
+import { replierAvecPertes } from "./src/gsm7";
+
+const { texte, perdus } = replierAvecPertes(nom);
+if (perdus.length > 0) { /* replier sur autre chose que le nom */ }
+```
+
 ## Ce que Ndank ne fait pas
 
 **Il n'encaisse pas.** Il décide qui relancer et quand ; le paiement lui-même

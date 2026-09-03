@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { replier, segments, tientEnGsm7 } from "./gsm7";
+import {
+  replier,
+  replierAvecPertes,
+  segments,
+  tientEnGsm7,
+} from "./gsm7";
 
 /**
  * Le défaut que ces tests attrapent ne se voit pas : le message part, il est
@@ -81,5 +86,62 @@ describe("le compte des segments", () => {
     // La démonstration chiffrée du coût : le même texte, à un caractère près.
     expect(segments("a".repeat(100))).toBe(1);
     expect(segments("👋" + "a".repeat(100))).toBe(2);
+  });
+});
+
+describe("la table d'extension", () => {
+  it("garde l'antislash, qui en fait partie", () => {
+    // Le jeu s'écrivait "^{}\[~]|€" : dans une chaîne JS, \[ vaut [, donc
+    // l'antislash n'échappait pas lui-même mais le crochet, et manquait au jeu.
+    // Il disparaissait alors des messages — et, plus grave pour un module qui
+    // existe pour mesurer un coût, `segments` comptait en UCS-2 un texte que
+    // l'opérateur aurait facturé en GSM-7.
+    expect(tientEnGsm7("\\")).toBe(true);
+    expect(replier("a\\b")).toBe("a\\b");
+  });
+
+  it("compte l'antislash double, comme tout caractère étendu", () => {
+    expect(segments("\\".repeat(80))).toBe(1);
+    expect(segments("\\".repeat(81))).toBe(2);
+  });
+
+  it("ne fait plus basculer en UCS-2 un texte qui en contient un", () => {
+    // La démonstration du surcoût annoncé à tort : le même texte, à un
+    // antislash près, tenait sur un segment et en était facturé deux.
+    expect(segments("a".repeat(100) + "\\")).toBe(1);
+  });
+});
+
+describe("ce que le repli coûte, et comment le savoir", () => {
+  it("dit ce qu'il a supprimé", () => {
+    const r = replierAvecPertes("Bonjour 👋");
+    expect(r.texte).toBe("Bonjour ");
+    expect(r.perdus).toEqual(["👋"]);
+  });
+
+  it("ne signale rien quand il a su replier", () => {
+    // « ’ » et « â » ont un repli : ce n'est pas une perte à signaler.
+    const r = replierAvecPertes("l’accès a coûté");
+    expect(r.perdus).toEqual([]);
+    expect(r.texte).toBe("l'accès a couté");
+  });
+
+  it("signale une écriture entière qu'il a vidée", () => {
+    // Le cas qui compte vraiment : au Sénégal, au Mali, au Niger, un nom en
+    // écriture arabe disparaît en entier. L'émoji effacé n'est pas grave — le
+    // destinataire effacé l'est, et rien ne le disait à l'appelant.
+    const r = replierAvecPertes("مرحبا");
+    expect(r.texte).toBe("");
+    expect(r.perdus.length).toBeGreaterThan(0);
+  });
+
+  it("ne compte pas deux fois le même caractère perdu", () => {
+    expect(replierAvecPertes("👋👋👋").perdus).toEqual(["👋"]);
+  });
+
+  it("rend exactement ce que `replier` rend", () => {
+    // Les deux ne doivent pas pouvoir diverger : l'une délègue à l'autre.
+    const t = "Renouvelle 2 000 F — l’accès s’arrête… 👋";
+    expect(replierAvecPertes(t).texte).toBe(replier(t));
   });
 });

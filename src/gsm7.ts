@@ -48,8 +48,14 @@ const BASE =
  * Ils passent, mais comptent **double** : chacun est précédé d'un caractère
  * d'échappement. Un texte truffé d'euros tient donc moins que sa longueur ne le
  * laisse croire.
+ *
+ * L'antislash est doublé parce qu'il en faut un vrai : écrit `"\["`, il ne
+ * s'échappait pas lui-même mais le crochet, et disparaissait du jeu. Il était
+ * alors supprimé des messages, et `segments()` comptait en UCS-2 un texte que
+ * l'opérateur aurait facturé en GSM-7 — soit exactement l'erreur de mesure que
+ * ce module existe pour éviter.
  */
-const ETENDUS = "^{}\[~]|€";
+const ETENDUS = "^{}\\[~]|€";
 
 const DANS_BASE = new Set(BASE.split(""));
 const DANS_ETENDUS = new Set(ETENDUS.split(""));
@@ -104,15 +110,35 @@ const REPLIS: Record<string, string> = {
   "Ù": "U",
 };
 
+/** Un texte replié, et ce que le repli a coûté. */
+export interface Repli {
+  texte: string;
+  /**
+   * Les caractères qu'aucun repli ne savait rendre, et qui ont donc disparu.
+   * Sans doublon, dans l'ordre de rencontre.
+   */
+  perdus: string[];
+}
+
 /**
- * Rend un texte que l'opérateur enverra en GSM-7.
+ * Replie, et dit ce qui s'est perdu en route.
  *
- * Ce qui n'est ni dans l'alphabet, ni dans la table de replis, disparaît —
- * émoji compris. Un émoji dans une relance ferait basculer les 160 caractères
- * en 70 à lui tout seul, et il n'apporte rien à « ton abonnement expire ».
+ * ════════════════════════════════════════════════════════════════════════════
+ * POURQUOI LA PERTE DOIT POUVOIR SE VOIR
+ *
+ * Le repli de dernier recours décompose puis filtre sur l'alphabet. Pour une
+ * écriture qui n'a aucun équivalent latin, le filtre ne laisse rien : « مرحبا »
+ * et « Привет » rendent une chaîne vide. Un émoji effacé n'est pas grave — un
+ * nom d'abonné effacé l'est, et dans la zone où Ndank tourne, ce n'est pas un
+ * cas d'école.
+ *
+ * `replier` continue de rendre une simple chaîne, parce que c'est ce dont
+ * l'appelant a besoin la plupart du temps. Celui qui veut savoir ce qu'il vient
+ * de perdre passe par ici.
  */
-export function replier(texte: string): string {
+export function replierAvecPertes(texte: string): Repli {
   let sortie = "";
+  const perdus: string[] = [];
 
   for (const c of texte) {
     if (DANS_BASE.has(c) || DANS_ETENDUS.has(c)) {
@@ -135,10 +161,26 @@ export function replier(texte: string): string {
       .filter((x) => DANS_BASE.has(x))
       .join("");
 
+    if (nu === "" && !perdus.includes(c)) perdus.push(c);
+
     sortie += nu;
   }
 
-  return sortie;
+  return { texte: sortie, perdus };
+}
+
+/**
+ * Rend un texte que l'opérateur enverra en GSM-7.
+ *
+ * Ce qui n'est ni dans l'alphabet, ni dans la table de replis, disparaît —
+ * émoji compris. Un émoji dans une relance ferait basculer les 160 caractères
+ * en 70 à lui tout seul, et il n'apporte rien à « ton abonnement expire ».
+ *
+ * Quand la perte compte — un nom d'abonné, un libellé d'offre — passer par
+ * `replierAvecPertes`, qui dit ce qu'il a supprimé.
+ */
+export function replier(texte: string): string {
+  return replierAvecPertes(texte).texte;
 }
 
 /** Vrai si le texte partira en GSM-7, sans repli préalable. */
