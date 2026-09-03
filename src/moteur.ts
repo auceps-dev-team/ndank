@@ -1,4 +1,4 @@
-import { ajouterJours, cleDeCycle } from "./cycle";
+import { ajouterJours, cleDeCycle, joursEntre } from "./cycle";
 import {
   canauxDuPalier,
   etatDe,
@@ -81,9 +81,13 @@ function messagePour(input: {
     offre: input.abonnement.libelle,
     montant: input.montantLisible,
     lien: input.lien,
-    joursRestants: Math.round(
-      (input.abonnement.cycle.accesJusquA.getTime() - input.maintenant.getTime()) /
-        86_400_000,
+    // `joursEntre` et non une division de millisecondes : cette dernière
+    // comptait depuis l'instant du passage vers une borne à minuit, donc rendait
+    // 7 à minuit et 6 à treize heures pour le même abonnement. Le nombre annoncé
+    // à l'abonné dépendait de l'heure du cron.
+    joursRestants: joursEntre(
+      input.maintenant,
+      input.abonnement.cycle.accesJusquA,
     ),
     dernier: input.palier === PALIERS.length - 1,
   };
@@ -242,9 +246,9 @@ export function apercuDe(
     etat,
     echeance: abonnement.cycle.echeance,
     accesJusquA: abonnement.cycle.accesJusquA,
-    joursRestants: Math.round(
-      (abonnement.cycle.accesJusquA.getTime() - maintenant.getTime()) / 86_400_000,
-    ),
+    // Même compte que dans une relance : le jour civil, et non une division
+    // de millisecondes. L'écran et le message doivent dire le même nombre.
+    joursRestants: joursEntre(maintenant, abonnement.cycle.accesJusquA),
     cycle: cleDeCycle(abonnement.cycle.echeance),
   };
 }

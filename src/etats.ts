@@ -44,14 +44,24 @@ export interface Abonnement {
  * un abonné qui a dit non ne doit plus jamais recevoir de rappel, même si son
  * échéance tombe demain. Le reste suit les dates, de la plus lointaine à la
  * plus proche.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * ON COMPARE DES JOURS, PAS DES INSTANTS
+ *
+ * `joursEntre` ramène ses deux bornes au jour civil UTC. Comparer directement
+ * `maintenant > cycle.accesJusquA` mettrait la coupure d'accès à la merci de
+ * l'heure du passage : une borne est à minuit, donc un passage lancé à 3 h du
+ * matin coupait un jour civil plus tôt qu'un passage lancé à minuit pile. Deux
+ * serveurs, deux durées de grâce — la faute exacte que `jour()` existe pour
+ * empêcher, laissée à l'endroit qui décide de couper un service payé.
  */
 export function etatDe(abonnement: Abonnement, maintenant: Date): Etat {
   if (abonnement.resilieeLe !== null) return "RESILIEE";
 
   const { cycle } = abonnement;
 
-  if (maintenant > cycle.repriseJusquA) return "EXPIREE";
-  if (maintenant > cycle.accesJusquA) return "SUSPENDUE";
+  if (joursEntre(cycle.repriseJusquA, maintenant) > 0) return "EXPIREE";
+  if (joursEntre(cycle.accesJusquA, maintenant) > 0) return "SUSPENDUE";
 
   // L'accès tient encore. Reste à savoir si l'on doit relancer.
   const restant = joursEntre(maintenant, cycle.echeance);

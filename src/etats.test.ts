@@ -232,3 +232,51 @@ describe("ce qu'on annonce à l'abonné", () => {
     expect(relancesAnnoncees("push")).toHaveLength(attendus + 1);
   });
 });
+
+describe("l'heure du passage", () => {
+  // Toute cette suite partait de minuit UTC, et `ajouterJours` conserve
+  // minuit : pas un test ne s'exécutait à une autre heure. Une comparaison
+  // d'instants contre une borne à minuit passait donc inaperçue, alors qu'elle
+  // faisait dépendre la coupure d'accès de l'heure à laquelle le cron tourne.
+  const a = abonnement();
+  const HEURES = [0, 3, 12, 23];
+
+  /** Le même jour civil, à telle heure. */
+  function heure(quand: Date, h: number): Date {
+    return new Date(quand.getTime() + h * 3_600_000);
+  }
+
+  it("ne change pas l'état, le dernier jour de grâce", () => {
+    for (const h of HEURES) {
+      expect(etatDe(a, heure(a.cycle.accesJusquA, h)), `${h} h`).toBe(
+        "A_RENOUVELER",
+      );
+    }
+  });
+
+  it("ne change pas l'état, le lendemain de la grâce", () => {
+    const lendemain = ajouterJours(a.cycle.accesJusquA, 1);
+    for (const h of HEURES) {
+      expect(etatDe(a, heure(lendemain, h)), `${h} h`).toBe("SUSPENDUE");
+    }
+  });
+
+  it("ne change pas l'état, au bord de l'expiration", () => {
+    const apres = ajouterJours(a.cycle.repriseJusquA, 1);
+    for (const h of HEURES) {
+      expect(etatDe(a, heure(a.cycle.repriseJusquA, h)), `${h} h`).toBe(
+        "SUSPENDUE",
+      );
+      expect(etatDe(a, heure(apres, h)), `${h} h`).toBe("EXPIREE");
+    }
+  });
+
+  it("ne change pas le geste, au premier palier", () => {
+    const jourDuPalier = ajouterJours(a.cycle.echeance, PALIERS[0]!.jour);
+    for (const h of HEURES) {
+      const g = gesteDuJour(a, heure(jourDuPalier, h), RIEN);
+      expect(g.faire, `${h} h`).toBe("RAPPELER");
+      expect(g.faire === "RAPPELER" && g.palier, `${h} h`).toBe(0);
+    }
+  });
+});

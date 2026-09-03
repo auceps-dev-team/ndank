@@ -281,4 +281,34 @@ describe("l'aperçu montré à l'abonné", () => {
       "A_RENOUVELER",
     );
   });
+
+  it("dit le même nombre de jours quelle que soit l'heure du passage", async () => {
+    // Une division de millisecondes comptait depuis l'instant courant vers une
+    // borne à minuit : 7 jours à minuit, 6 à treize heures, pour le même
+    // abonnement. L'abonné lisait un nombre qui dépendait de l'heure du cron.
+    const a = abonnement();
+    const jourJ = ajouterJours(a.cycle.accesJusquA, -7);
+
+    const comptes = [0, 3, 13, 23].map(
+      (h) => apercuDe(a, new Date(jourJ.getTime() + h * 3_600_000)).joursRestants,
+    );
+
+    expect(new Set(comptes).size, `comptes: ${comptes.join(", ")}`).toBe(1);
+    expect(comptes[0]).toBe(7);
+  });
+
+  it("porte le même compte dans la relance que dans l'aperçu", async () => {
+    // L'écran et le message ne doivent pas pouvoir se contredire.
+    const a = abonnement();
+    const quand = new Date(
+      ajouterJours(a.cycle.echeance, -1).getTime() + 13 * 3_600_000,
+    );
+
+    const f = faussePorts([a]);
+    await passer(f.ports, REGLAGES, quand);
+
+    expect(f.envois[0]!.message.joursRestants).toBe(
+      apercuDe(a, quand).joursRestants,
+    );
+  });
 });
