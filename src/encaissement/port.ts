@@ -208,39 +208,16 @@ export type Entetes = Readonly<Record<string, string | undefined>>;
 
 // ─────────────────────────────────────────────────────────────────── http ──
 
-export interface Requete {
-  methode: "GET" | "POST" | "PUT" | "DELETE";
-  url: string;
-  entetes: Record<string, string>;
-  /** Déjà sérialisé. Les adaptateurs décident de leur propre encodage. */
-  corps?: string;
-}
-
-export interface Reponse {
-  statut: number;
-  corps: string;
-}
-
 /**
- * Le seul moyen par lequel ce module parle au monde extérieur.
+ * Le transport vit désormais à la racine, dans `src/http.ts`.
  *
- * Un port, comme les autres. L'hôte peut y brancher `fetch`, un client qui
- * réessaie, un qui journalise, ou un faux qui rejoue des réponses enregistrées
- * — c'est ce dernier cas qui rend les adaptateurs éprouvables sans compte
- * marchand.
+ * Il est réexporté ici parce que c'est par ce chemin que les hôtes l'importent
+ * depuis la première version, et qu'un déplacement interne n'a pas à casser
+ * leur code. La couche d'envoi, elle, va le chercher à la source — elle n'a
+ * aucune raison de traverser la couche des paiements pour envoyer un SMS.
  */
-export type Http = (requete: Requete) => Promise<Reponse>;
-
-/** L'implémentation par défaut, sur le `fetch` de la plateforme. */
-export const httpParDefaut: Http = async (requete) => {
-  const reponse = await fetch(requete.url, {
-    method: requete.methode,
-    headers: requete.entetes,
-    body: requete.corps,
-  });
-
-  return { statut: reponse.status, corps: await reponse.text() };
-};
+export type { Http, Reponse, Requete } from "../http";
+export { httpParDefaut } from "../http";
 
 /**
  * Ce qu'un fournisseur a refusé de faire.
