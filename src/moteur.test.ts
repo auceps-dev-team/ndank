@@ -159,6 +159,29 @@ describe("le passage quotidien", () => {
     expect(f.envois[0]!.message.dernier).toBe(false);
   });
 
+  it("ne salue pas l'abonné par le nom de son offre quand il n'a pas de nom", async () => {
+    // Le repli était `ou.nom ?? abonnement.libelle`, et il compilait très bien.
+    // Le courriel disait « Bonjour Pass Créateur » : on saluait quelqu'un par le
+    // nom du produit qu'on lui vend. `Coordonnees.nom` annonçait pourtant la
+    // bonne règle depuis le début — on dira « Bonjour » — mais le type de
+    // `Message` interdisait de transmettre l'ignorance.
+    const a = abonnement();
+    const f = faussePorts([a], {
+      coordonnees: {
+        nom: null,
+        courriel: "abonne@ndank.test",
+        telephone: null,
+        appareils: [],
+      },
+    });
+
+    await passer(f.ports, REGLAGES, ajouterJours(a.cycle.echeance, -3));
+
+    expect(f.envois).toHaveLength(1);
+    expect(f.envois[0]!.message.destinataire).toBeNull();
+    expect(f.envois[0]!.message.offre).toBe("Pass Créateur");
+  });
+
   it("sort le SMS au dernier palier, quand l'accès va tomber", async () => {
     const a = abonnement();
     const f = faussePorts([a], { canauxQuiMarchent: ["sms"] });

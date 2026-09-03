@@ -167,8 +167,27 @@ export type Canal = "courriel" | "sms" | "push";
 export interface Message {
   /** La clé de la relance : cycle et palier. Sert à ne pas doubler l'envoi. */
   cle: string;
-  /** Le nom de l'abonné, tel qu'on l'appelle. */
-  destinataire: string;
+  /**
+   * Le nom de l'abonné, tel qu'on l'appelle. `null` quand on ne le sait pas.
+   *
+   * ─────────────────────────────────────────────────────────────────────
+   * IL VAUT MIEUX NE PAS NOMMER QUE NOMMER FAUX
+   *
+   * Ce champ a longtemps été un `string`, et le moteur y mettait le libellé
+   * de l'offre quand `Coordonnees.nom` manquait. Le courriel disait donc
+   * « Bonjour Baobart Pro », c'est-à-dire qu'il saluait quelqu'un par le nom
+   * du produit qu'on lui vend.
+   *
+   * `Coordonnees.nom` annonçait déjà la bonne règle — « `null` quand on ne
+   * sait pas, on dira Bonjour » — mais rien ne la faisait respecter, parce
+   * que le type interdisait de transmettre l'ignorance. Le repli était le
+   * seul moyen de compiler.
+   *
+   * Le `null` remonte donc jusqu'ici, et c'est la rédaction qui décide quoi
+   * en faire : « Bonjour, » sans nom dans un courriel, et rien du tout dans
+   * un SMS, où saluer coûte des caractères qu'on n'a pas.
+   */
+  destinataire: string | null;
   /** Le nom de l'offre. */
   offre: string;
   /** Le montant, déjà formaté par l'hôte — lui seul connaît sa devise. */

@@ -115,7 +115,7 @@ function messagePour(input: {
   palier: number;
   cle: string;
   lien: string;
-  nom: string;
+  nom: string | null;
   montantLisible: string;
   maintenant: Date;
 }): Message {
@@ -282,7 +282,10 @@ async function agir(
       palier: geste.palier,
       cle: geste.cle,
       lien: redaction.lien(abonnement),
-      nom: ou.nom ?? abonnement.libelle,
+      // Et non `?? abonnement.libelle` : ce repli-là faisait dire « Bonjour
+      // Baobart Pro » à un abonné dont on ignorait le nom. On transmet
+      // l'ignorance, la rédaction sait la dire.
+      nom: ou.nom,
       montantLisible: redaction.montant(abonnement),
       maintenant,
     }),
