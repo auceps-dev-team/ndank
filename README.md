@@ -146,6 +146,26 @@ cp .env.example .env      # puis remplir DATABASE_URL et vos clés
 npx prisma migrate dev
 ```
 
+Puis les ports sont déjà écrits — c'est tout ce que le niveau 2 vous épargne :
+
+```ts
+import { PrismaClient } from "@prisma/client";
+import { portsPrisma } from "./src/prisma/adaptateur";
+import { passer } from "./src/moteur";
+
+const { lecture, ecriture, creances } = portsPrisma(new PrismaClient(), {
+  projetId: "prj-...",
+});
+
+await passer({ lecture, ecriture, envoi }, { lien, montant });
+```
+
+Il ne reste que `Envoi` à fournir : Ndank ne sait pas envoyer vos courriels.
+
+Ndank ne dépend pas de `@prisma/client` — il décrit la forme dont il a besoin,
+et votre client la satisfait. `dependencies` reste vide, et un hôte qui reste au
+niveau 1 n'installe rien.
+
 Quatre décisions y sont encodées, et méritent d'être connues avant de les
 modifier :
 

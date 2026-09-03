@@ -6,6 +6,49 @@ le reste.
 
 ---
 
+## 0.5.0
+
+Le niveau 2 devient utilisable : les ports sont écrits contre le schéma. Un hôte
+qui accepte Prisma et PostgreSQL n'a plus qu'à fournir `Envoi` — Ndank ne sait
+pas envoyer ses courriels à sa place.
+
+### Ajouté
+
+**`portsPrisma(client, { projetId })`** rend `lecture`, `ecriture` et
+`creances`. Deux tests font tourner le passage quotidien du niveau 1 contre ces
+ports, sans qu'une ligne du cœur ne change.
+
+**Une interface étroite du client Prisma.** Ndank ne dépend pas de
+`@prisma/client` : il décrit la forme dont il a besoin, et le client généré la
+satisfait. `dependencies` reste vide, et un hôte qui reste au niveau 1
+n'installe rien. Les lignes lues sont typées au champ près ; les arguments
+`where` et `data` restent ouverts, parce que les reproduire à la main
+donnerait une fausse sécurité — ce sont les tests contre un faux client qui
+vérifient les clauses envoyées.
+
+### Corrigé dans le schéma
+
+**Les abonnements résiliés sont désormais écartés du lot.** Le cas était
+retors : `etatDe` rend `RESILIEE` avant même de regarder les dates, donc
+`gesteDuJour` rend `RIEN` — pour toujours. Le moteur ne clôt jamais un résilié.
+Laissés éligibles, ils seraient restés dans un lot plafonné aussi longtemps que
+la base existe, exactement comme les clos. `resilieeLe` entre donc dans l'index
+du passage quotidien, avant `echeance`.
+
+**Un index sur `identifiantFournisseur` seul.** La déduplication interroge par
+cette colonne, qui est la seconde de l'unicité `(fournisseur,
+identifiantFournisseur)` — position qu'un index B-tree ne sait pas exploiter.
+Sans lui, chaque webhook parcourait la table des versements, et Paystack en
+rejoue pendant soixante-douze heures.
+
+**Une clé d'idempotence sur le journal.** Le moteur redit `suspendre` chaque
+jour de la fenêtre de reprise : trente appels pour un seul fait. `Evenement.cle`
+et l'unicité `(abonnementId, type, cle)` n'en gardent qu'un. Le champ est
+nullable, et PostgreSQL considère deux `NULL` comme distincts — les événements
+qui doivent se répéter le peuvent.
+
+---
+
 ## 0.4.0
 
 Le niveau 2 commence : les tables toutes faites, pour qui accepte Prisma et
