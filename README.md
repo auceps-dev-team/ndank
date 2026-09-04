@@ -89,7 +89,7 @@ rafale, et ce refus deviendrait une relance qui ne part pas.
 | | Pour qui | Ce qu'il faut faire |
 |---|---|---|
 | **Ports** | Autonomie complète | Implémenter `Lecture`, `Ecriture`, `Envoi` contre votre base |
-| **Schéma fourni** | Intégration rapide | Prendre les tables Prisma livrées *(en cours)* |
+| **Schéma fourni** | Intégration rapide | Prendre les tables Prisma livrées, et nommer ses passerelles |
 | **Service hébergé** | Sans code | Appeler l'API *(à venir)* |
 
 Les trois partagent le même cœur : les niveaux 2 et 3 ne sont que des
@@ -160,7 +160,8 @@ const { lecture, ecriture, creances } = portsPrisma(new PrismaClient(), {
 await passer({ lecture, ecriture, envoi }, { lien, montant });
 ```
 
-Il ne reste que `Envoi` à fournir : Ndank ne sait pas envoyer vos courriels.
+`envoi` se compose à partir de vos clés — voir [Envoyer les
+relances](#envoyer-les-relances). Il n'y a plus rien à écrire.
 
 Ndank ne dépend pas de `@prisma/client` — il décrit la forme dont il a besoin,
 et votre client la satisfait. `dependencies` reste vide, et un hôte qui reste au
@@ -186,6 +187,125 @@ cette dernière qui empêche un webhook rejoué soixante-douze heures durant
 d'avancer trois fois la même échéance.
 
 L'argent est en `Int`, en unités mineures — jamais `Float`, jamais `Decimal`.
+
+## Envoyer les relances
+
+`Envoi` était le dernier port à écrire. Il ne l'est plus : Ndank rédige les
+trois formes du message et livre quatre passerelles.
+
+```ts
+import { envoiCompose } from "./src/envoi/compose";
+import { transporteurCourriel, transporteurSms } from "./src/envoi/registre";
+
+const envoi = envoiCompose({
+  courriel: transporteurCourriel("resend", {
+    cleApi: process.env.RESEND_CLE_API,
+    expediteur: "Baobart <no-reply@baobart.ci>",
+  }),
+  sms: transporteurSms("twilio", {
+    sid: process.env.TWILIO_SID,
+    jeton: process.env.TWILIO_JETON,
+    expediteur: process.env.TWILIO_EXPEDITEUR,
+    indicatifParDefaut: "225",
+  }),
+});
+```
+
+Rien n'est branché sur le push : `disponible("push", …)` rendra `false`, le
+moteur passera au canal suivant du palier, et rien ne cassera. C'est ce qui
+permet de démarrer avec un seul canal.
+
+| Canal | Livrées | Fondations |
+|---|---|---|
+| Courriel | `resend`, `brevo` | — |
+| SMS | `twilio` | `orange-sms`, `africastalking` |
+| Notification | `expo` | `fcm`, `webpush` |
+
+### Vérifier au démarrage, pas au troisième jour
+
+```ts
+import { verifierEnvoi } from "./src/envoi/registre";
+
+const problemes = verifierEnvoi({
+  courriel: { passerelle: "resend", identifiants: process.env },
+  sms: { passerelle: "twilio", identifiants: process.env },
+});
+
+if (problemes.length > 0) throw new Error(problemes.join("\n"));
+```
+
+Cette vérification compte plus que celle des paiements, et la différence tient
+à la façon dont les deux pannes se manifestent.
+
+Une clé de paiement absente se découvre au premier abonné qui clique. Il
+réessaie, il écrit au support, on répare dans l'heure.
+
+**Une clé d'envoi absente ne se découvre pas.** Le passage tourne, l'erreur de
+la passerelle est rattrapée, le bilan compte un `injoignable` de plus — et ce
+chiffre n'a aucune raison d'alerter quelqu'un un mardi matin. La panne se
+manifeste au troisième jour, quand l'accès tombe pour un abonné qui n'a rien
+reçu, et qui n'a aucun moyen de savoir ce qui s'est passé.
+
+### Un passage à blanc avant le premier vrai
+
+```ts
+import { envoiMuet } from "./src/envoi/compose";
+
+const { envoi, retenus } = envoiMuet();
+await passer({ lecture, ecriture, envoi }, { lien, montant });
+
+retenus;   // tout ce qui serait parti : à qui, sur quel canal, avec quel texte
+```
+
+Il **rédige vraiment** — c'est tout l'intérêt. Un faux qui se contenterait de
+compter ne dirait rien du contenu, et c'est le contenu qui surprend : un libellé
+d'offre un peu long fait déborder le SMS, et on préfère le découvrir là.
+
+### Ce que la rédaction garantit
+
+**Le lien ne se coupe jamais.** Un SMS trop long coûte un segment de plus ; un
+lien tronqué ne mène nulle part, donc la relance la plus chère de l'échelle —
+celle qu'on n'envoie qu'au moment où l'accès va tomber — ne sert plus à rien.
+C'est le nom de l'offre qui cède : l'abonné sait à quoi il est abonné, il ne
+sait pas qu'on va lui couper l'accès.
+
+**Un SMS tient en un segment**, mesuré après le repli GSM-7 et non avant — « œ »
+devient « oe », et mesurer avant ferait tenir sur le papier un message qui
+déborde sur la facture.
+
+**On dit que le message a pu croiser un paiement.** Le webhook d'un opérateur
+arrive quand il arrive ; le passage part à heure fixe. Sans cette phrase,
+l'abonné qui a réglé la veille au soir conclut qu'on ne l'a pas vu, et il
+repaie.
+
+**On ne salue personne par le nom de son offre.** Quand `Coordonnees.nom` est
+`null`, le courriel dit « Bonjour, » — et le SMS ne salue pas du tout, parce que
+chaque septet compte.
+
+### Écrire sa propre passerelle
+
+`Transporteur` fait trois champs et une méthode. Un agrégateur SMS local — qui
+facture souvent l'unité moins cher qu'un envoi international, et négocie un
+identifiant d'expéditeur alphanumérique — se branche en une trentaine de lignes :
+
+```ts
+const monAgregateur: TransporteurSms = {
+  nom: "mon-agregateur",
+  canal: "sms",
+  async envoyer(ou, contenu) {
+    const r = await fetch("https://…", {
+      method: "POST",
+      body: JSON.stringify({ to: ou.telephone, text: contenu.texte }),
+    });
+    return { parti: r.ok, reference: null };
+  },
+};
+```
+
+Le reste ne bouge pas : les paliers, les clés de relance, le repli GSM-7, le
+budget de segments. Et pour écrire dans une autre langue, on ne fournit pas un
+gabarit — on fournit un `Redacteur` à `envoiCompose`, et l'on garde tout le
+reste.
 
 ## Encaisser sans encaisser
 
@@ -261,11 +381,13 @@ trente.
 `resteADevoir` existe pour la relance : redemander la somme entière à quelqu'un
 qui a déjà versé la moitié lui fait croire que son premier versement s'est perdu.
 
-## Un helper pour ceux qui branchent un SMS
+## Le piège du SMS, pour ceux qui écrivent leur propre rédaction
 
-`src/gsm7.ts` ne fait pas partie du cœur — le moteur ne l'importe pas. Il est
-là parce que tout hôte qui implémente `Envoi` pour un SMS tombe sur le même
-piège, et qu'il ne se voit nulle part.
+Depuis la 0.6.0, `redigerSms` s'en occupe : si vous passez par `envoiCompose`,
+vous n'avez rien à faire de cette section. Elle reste ici pour l'hôte qui rédige
+lui-même — et parce que le piège ne se voit nulle part.
+
+`src/gsm7.ts` ne fait pas partie du cœur : le moteur ne l'importe pas.
 
 Un SMS écrit dans l'alphabet GSM tient 160 caractères par segment. Un seul
 caractère en dehors, et l'opérateur bascule le message entier en UCS-2 : 70. Le

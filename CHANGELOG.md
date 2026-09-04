@@ -6,6 +6,112 @@ le reste.
 
 ---
 
+## 0.6.0
+
+Ndank sait envoyer. Un hôte au niveau 2 n'a plus rien à écrire : il pose ses
+clés, nomme ses passerelles, et le passage quotidien part.
+
+### Ajouté
+
+**La rédaction** — `src/envoi/redaction.ts`. `Message` portait des faits ; il
+manquait les phrases. Trois formes, une par canal, et trois règles qui les
+tiennent :
+
+- **le lien ne se coupe jamais.** Un SMS trop long coûte un segment de plus ;
+  un lien tronqué ne mène nulle part, donc la relance la plus chère de
+  l'échelle — celle qu'on n'envoie qu'au moment où l'accès va tomber — ne sert
+  plus à rien. C'est le nom de l'offre qui cède : l'abonné sait à quoi il est
+  abonné, il ne sait pas qu'on va lui couper l'accès. Même règle pour le titre
+  d'une notification, où le suffixe « dernier rappel » survit ;
+- **on mesure après le repli.** « œ » devient « oe » : mesurer avant
+  sous-estimerait le coût, et le message tiendrait sur le papier en débordant
+  sur la facture. La recherche passe par `segments()`, jamais par un compte de
+  septets recopié ailleurs ;
+- **on prévient que le message a pu croiser un paiement.** Le webhook d'un
+  opérateur arrive quand il arrive ; le passage part à heure fixe. Sans cette
+  phrase, l'abonné qui a réglé la veille au soir conclut qu'on ne l'a pas vu,
+  et il repaie.
+
+**Les transporteurs et l'envoi composé** — `src/envoi/port.ts`,
+`src/envoi/compose.ts`. Un `Transporteur` ne fait que la moitié qui dépend du
+fournisseur : il reçoit un contenu déjà rédigé et l'expédie. `envoiCompose`
+recolle, et rend un `Envoi` que le cœur consomme sans rien savoir de tout cela.
+
+Deux règles y décident de vraies coupures d'accès :
+
+- **un canal sans passerelle n'est pas disponible.** Le moteur descend
+  l'échelle du palier et s'arrête au premier canal qui part ; au dernier
+  palier, il n'y a pas de suivant. Un « disponible » menteur ferait couper
+  quelqu'un qu'on n'a jamais prévenu ;
+- **aucune exception ne remonte jusqu'au moteur.** Il rattrape, mais au niveau
+  de l'abonnement entier : une passerelle SMS en délai d'attente ferait de cet
+  abonné un incident, et le push, gratuit et disponible, ne partirait pas
+  parce que le SMS était lent.
+
+**`envoiMuet()`** rédige tout et n'expédie rien — pour un premier passage à
+blanc sur la base de production, où l'on découvre qu'un libellé d'offre fait
+déborder le SMS avant que les abonnés ne le découvrent.
+
+**Quatre passerelles livrées.** Resend et Brevo pour le courriel, Twilio pour
+le SMS, Expo pour la notification. Chacune évite un piège précis : Brevo
+n'authentifie pas par un Bearer mais par un en-tête `api-key` ; Twilio attend
+un formulaire et non du JSON, et peut rendre `failed` dès la création ; Expo
+cache ses refus dans un `200`, une entrée par appareil.
+
+**`Remise.aRetirer`** remonte les jetons d'appareil que la passerelle déclare
+morts. Sans eux, `joignable("push", …)` continue de rendre vrai : un abonné
+dont le seul appareil est mort semble joignable, et le palier se consomme sur
+un canal qui ne mène nulle part.
+
+**Le registre des passerelles** — `src/envoi/registre.ts`. Même promesse que
+celui des paiements, plus `verifierEnvoi()`, qui refuse de laisser démarrer une
+application muette. Cette vérification-là compte plus que celle des paiements :
+une clé de paiement absente se découvre au premier abonné qui clique ; une clé
+d'envoi absente ne se découvre pas. Le passage tourne, l'erreur est rattrapée,
+le bilan compte un `injoignable` de plus — et ce chiffre n'alerte personne un
+mardi matin. La panne se voit au troisième jour, quand l'accès tombe pour
+quelqu'un qui n'a rien reçu.
+
+**Les fondations d'Orange SMS, Africa's Talking, FCM et Web Push.** Même règle
+que `directs.ts` du côté des paiements : on n'écrit pas d'adresse d'API sur la
+foi d'un souvenir. Il fallait y résister davantage ici — ces API-là sont plus
+simples, donc plus faciles à deviner. Facile à deviner ne veut pas dire juste.
+
+### Corrigé
+
+**On ne salue plus l'abonné par le nom de son offre.** `messagePour` repliait
+sur `ou.nom ?? abonnement.libelle` : le courriel disait « Bonjour Pass
+Créateur ». `Coordonnees.nom` annonçait pourtant la bonne règle depuis le début
+— « `null` quand on ne sait pas, on dira Bonjour » — mais `Message.destinataire`
+était un `string`, donc le repli était le seul moyen de compiler. Le `null`
+remonte maintenant jusqu'à la rédaction, qui sait le dire.
+
+**Toutes les espaces d'Unicode se replient, et plus seulement quatre.** La
+table de `gsm7` en listait quatre, rencontrées au fil de l'eau ; les six autres
+disparaissaient du message **et** étaient comptées comme des pertes. Les mots se
+recollaient, et la liste des pertes criait au loup à chaque relance — si bien
+qu'une vraie perte n'aurait plus été vue. Une règle remplace la liste, parce
+qu'une liste oublie.
+
+**`enE164` ne retire plus le zéro de tête.** La première version le retirait,
+par analogie avec la France. La Côte d'Ivoire est passée à dix chiffres en
+2021 : ce zéro fait **partie** du numéro. Le retirer donnait `+225700000000`,
+douze chiffres, un numéro qui n'existe pas — donc un SMS refusé, sur le marché
+prioritaire, au dernier palier de l'échelle. Le Bénin a fait le même changement
+en 2022 ; le Sénégal, le Mali, le Burkina et le Cameroun n'ont pas de zéro de
+tête du tout. `retirerZeroDeTete` existe pour les plans qui en ont un, et il
+faut le demander.
+
+### Déplacé
+
+**Le port `Http` vit à la racine**, dans `src/http.ts`. Il était né dans la
+couche d'encaissement parce que les fournisseurs de paiement furent les
+premiers à avoir besoin du réseau, mais un port HTTP n'a rien d'une notion
+comptable. L'y laisser aurait obligé la couche des relances à importer celle
+des paiements pour envoyer un courriel. `encaissement/port.ts` le réexporte :
+le chemin d'import des hôtes ne change pas.
+
+---
 ## 0.5.0
 
 Le niveau 2 devient utilisable : les ports sont écrits contre le schéma. Un hôte
