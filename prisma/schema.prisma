@@ -123,6 +123,7 @@ model Projet {
   abonnes     Abonne[]
   abonnements Abonnement[]
   evenements  Evenement[]
+  passages    Passage[]
 
   @@map("projet")
 }
@@ -502,4 +503,64 @@ model Evenement {
   @@index([abonnementId, quandLe])
   @@index([projetId, type, quandLe])
   @@map("evenement")
+}
+
+/// La trace d'un passage quotidien, réussi ou non.
+///
+/// ════════════════════════════════════════════════════════════════════════════
+/// ON GARDE AUSSI LES JOURS OÙ TOUT S'EST BIEN PASSÉ
+///
+/// Un journal d'incidents n'a rien à dire d'un jour sans incident, et c'est
+/// précisément pour cela que la panne la plus coûteuse lui échappe : le passage
+/// quotidien qui **ne tourne plus du tout**.
+///
+/// Le cron meurt, le conteneur ne redémarre pas, un déploiement casse la
+/// planification. Alors il n'y a aucun échec à journaliser — il y a du silence,
+/// et le silence ressemble exactement à « tout va bien ». Pendant ce temps,
+/// plus une relance ne part et plus un accès n'est coupé.
+///
+/// Cette table renverse la question : c'est l'ABSENCE de ligne récente qui
+/// alerte, pas la présence d'une ligne fautive.
+///
+/// ════════════════════════════════════════════════════════════════════════════
+/// ELLE GROSSIT D'UNE LIGNE PAR JOUR
+///
+/// Trois cent soixante-cinq par an et par projet. Il n'y a donc rien à purger
+/// avant plusieurs années, et le faire trop tôt effacerait précisément
+/// l'historique qui permet de dire « ça n'a jamais été aussi long ».
+model Passage {
+  id       String @id @default(cuid())
+  projetId String
+  projet   Projet @relation(fields: [projetId], references: [id], onDelete: Cascade)
+
+  /// Écrit AVANT que le passage ne commence.
+  ///
+  /// C'est ce qui rend distinguable un passage qui a démarré et n'a jamais fini
+  /// d'un passage qui n'a jamais démarré. Ce ne sont pas les mêmes pannes : la
+  /// première laisse peut-être la base à moitié écrite, la seconde veut dire que
+  /// la planification est morte.
+  commenceLe DateTime @default(now())
+  /// `null` tant qu'il n'est pas fini — donc en cours, ou interrompu.
+  termineLe  DateTime?
+
+  vus          Int @default(0)
+  relances     Int @default(0)
+  suspendus    Int @default(0)
+  clos         Int @default(0)
+  injoignables Int @default(0)
+  /// Combien d'abonnements ont échoué. Le détail va dans `Evenement`.
+  echecs       Int @default(0)
+
+  /// Vrai si le lot était plein : il restait probablement du travail.
+  ///
+  /// Sur une base plus grosse que `LOT`, deux passages pleins d'affilée veulent
+  /// dire qu'on ne rattrape plus — et cela ne se voit qu'ici.
+  lotPlein Boolean @default(false)
+
+  /// Ce qui a fait tomber le passage entier, quand cela arrive.
+  erreur String?
+
+  /// Du plus récent au plus ancien : c'est la seule lecture qu'on en fait.
+  @@index([projetId, commenceLe])
+  @@map("passage")
 }

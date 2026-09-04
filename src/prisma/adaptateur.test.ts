@@ -12,6 +12,7 @@ import type {
   LigneAbonne,
   LigneAbonnement,
   LigneOffre,
+  LignePassage,
   LigneVersement,
 } from "./client";
 
@@ -36,6 +37,7 @@ function fauxClient(
   const versements: Array<LigneVersement & { identifiantFournisseur: string }> =
     [];
   const abonnes = new Map<string, LigneAbonne>();
+  const passages: LignePassage[] = [];
 
   const noter = (table: string, methode: string, args: any) => {
     appels.push({ table, methode, args });
@@ -260,6 +262,53 @@ function fauxClient(
         return {};
       },
       async create() {
+        return {};
+      },
+    },
+
+    passage: {
+      async create(args) {
+        noter("passage", "create", args);
+        const p: LignePassage = {
+          id: `pas-${passages.length + 1}`,
+          commenceLe: args.data.commenceLe,
+          termineLe: null,
+          vus: 0,
+          relances: 0,
+          suspendus: 0,
+          clos: 0,
+          injoignables: 0,
+          echecs: 0,
+          lotPlein: false,
+          erreur: null,
+        };
+        passages.push(p);
+        return p;
+      },
+      async updateMany(args) {
+        noter("passage", "updateMany", args);
+        for (const p of passages) {
+          if (p.id === args.where.id) Object.assign(p, args.data);
+        }
+        return {};
+      },
+      async findFirst(args) {
+        noter("passage", "findFirst", args);
+        return [...passages].reverse()[0] ?? null;
+      },
+      async findMany() {
+        return passages;
+      },
+      async count() {
+        return passages.length;
+      },
+      async findUnique() {
+        return null;
+      },
+      async update() {
+        return {};
+      },
+      async upsert() {
         return {};
       },
     },
@@ -1088,5 +1137,81 @@ describe("la transaction du paiement manuel", () => {
     )!;
 
     expect(appel.args.where.projetId).toBe(PROJET);
+  });
+});
+
+describe("le battement, contre le schéma", () => {
+  it("ouvre une trace par passage, sans jamais en écraser une", async () => {
+    // `create` et non `upsert` : deux passages lancés dans la même minute sont
+    // deux faits distincts. En écraser un masquerait précisément le cas qu'on
+    // veut voir — deux processus qui tournent en parallèle.
+    const f = fauxClient([ligne()]);
+    const p = portsPrisma(f.client, { projetId: PROJET });
+
+    const un = await p.battements.commencer(DEPART);
+    const deux = await p.battements.commencer(DEPART);
+
+    expect(un).not.toBe(deux);
+    expect(f.appels.filter((a) => a.table === "passage" && a.methode === "create")).toHaveLength(2);
+    expect(
+      f.appels.find((a) => a.table === "passage")!.args.data.projetId,
+    ).toBe(PROJET);
+  });
+
+  it("rend le dernier passage par date de DÉBUT, pas de fin", async () => {
+    // Un passage encore ouvert n'a pas de seconde date, et trier dessus le
+    // ferait disparaître — alors que c'est précisément celui qu'on cherche
+    // quand le processus est bloqué.
+    const f = fauxClient([ligne()]);
+    const p = portsPrisma(f.client, { projetId: PROJET });
+
+    await p.battements.commencer(DEPART);
+    const trace = await p.battements.dernier();
+
+    expect(trace?.termineLe).toBeNull();
+
+    const appel = f.appels.find(
+      (a) => a.table === "passage" && a.methode === "findFirst",
+    )!;
+    expect(appel.args.orderBy).toEqual({ commenceLe: "desc" });
+    expect(appel.args.where.projetId).toBe(PROJET);
+  });
+
+  it("garde les compteurs du bilan, et le compte des échecs", async () => {
+    const f = fauxClient([ligne()]);
+    const p = portsPrisma(f.client, { projetId: PROJET });
+
+    const id = await p.battements.commencer(DEPART);
+    await p.battements.terminer(
+      id,
+      {
+        vus: 12,
+        relances: 3,
+        suspendus: 1,
+        clos: 0,
+        injoignables: 2,
+        echecs: [{ abonnementId: "ab-9", cause: new Error("x") }],
+        lotPlein: true,
+      },
+      ajouterJours(DEPART, 0),
+    );
+
+    const trace = await p.battements.dernier();
+
+    expect(trace).toMatchObject({ vus: 12, relances: 3, echecs: 1, lotPlein: true });
+    expect(trace?.termineLe).not.toBeNull();
+  });
+
+  it("ferme la trace sur l'erreur qui a emporté le passage", async () => {
+    const f = fauxClient([ligne()]);
+    const p = portsPrisma(f.client, { projetId: PROJET });
+
+    const id = await p.battements.commencer(DEPART);
+    await p.battements.echouer(id, "Error: base injoignable", DEPART);
+
+    const trace = await p.battements.dernier();
+
+    expect(trace?.erreur).toContain("injoignable");
+    expect(trace?.termineLe).not.toBeNull();
   });
 });

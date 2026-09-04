@@ -9,7 +9,9 @@ import type {
   Page,
   Tableau,
 } from "../api/tableau";
+import type { Battements, Trace } from "../battement";
 import type { DossierAbonnement } from "../dossier";
+import type { Passage } from "../moteur";
 import { grille, type Grille, type Offre } from "../offre";
 import type {
   EcrituresPaiement,
@@ -59,6 +61,8 @@ export interface PortsPrisma {
   souscriptions: Souscriptions;
   /** La grille tarifaire telle qu'elle est en base. */
   offres(): Promise<Grille>;
+  /** Pour savoir si le moteur tourne encore. */
+  battements: Battements;
   /** Pour les gestes manuels du tableau de bord. */
   interventions: Interventions;
 }
@@ -757,6 +761,78 @@ export function portsPrisma(
     },
   };
 
+  const battements: Battements = {
+    /**
+     * Ouvre la trace, avant que le passage ne commence.
+     *
+     * `create` et non `upsert` : chaque passage est un fait distinct, même
+     * lancé deux fois dans la même minute. En écraser un masquerait précisément
+     * le cas qu'on veut voir — deux processus qui tournent en parallèle.
+     */
+    async commencer(quand: Date): Promise<string> {
+      const ligne = (await client.passage.create({
+        data: { projetId, commenceLe: quand },
+      })) as { id: string };
+
+      return ligne.id;
+    },
+
+    async terminer(id: string, bilan: Passage, quand: Date): Promise<void> {
+      await client.passage.updateMany({
+        where: { id, projetId },
+        data: {
+          termineLe: quand,
+          vus: bilan.vus,
+          relances: bilan.relances,
+          suspendus: bilan.suspendus,
+          clos: bilan.clos,
+          injoignables: bilan.injoignables,
+          // Le compte suffit ici : le détail de chaque échec a sa place dans
+          // le journal, pas dans une ligne qu'on lit d'un coup d'œil.
+          echecs: bilan.echecs.length,
+          lotPlein: bilan.lotPlein,
+        },
+      });
+    },
+
+    async echouer(id: string, erreur: string, quand: Date): Promise<void> {
+      await client.passage.updateMany({
+        where: { id, projetId },
+        data: { termineLe: quand, erreur },
+      });
+    },
+
+    /**
+     * La dernière trace, par date de début.
+     *
+     * Par `commenceLe` et non `termineLe` : un passage encore ouvert n'a pas de
+     * seconde date, et trier dessus le ferait disparaître — alors que c'est
+     * précisément celui qu'on cherche quand le processus est bloqué.
+     */
+    async dernier(): Promise<Trace | null> {
+      const ligne = await client.passage.findFirst({
+        where: { projetId },
+        orderBy: { commenceLe: "desc" },
+      });
+
+      return ligne === null
+        ? null
+        : {
+            id: ligne.id,
+            commenceLe: ligne.commenceLe,
+            termineLe: ligne.termineLe,
+            vus: ligne.vus,
+            relances: ligne.relances,
+            suspendus: ligne.suspendus,
+            clos: ligne.clos,
+            injoignables: ligne.injoignables,
+            echecs: ligne.echecs,
+            lotPlein: ligne.lotPlein,
+            erreur: ligne.erreur,
+          };
+    },
+  };
+
   return {
     lecture,
     ecriture,
@@ -766,5 +842,6 @@ export function portsPrisma(
     souscriptions,
     offres,
     interventions,
+    battements,
   };
 }

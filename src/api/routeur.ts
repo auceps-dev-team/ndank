@@ -1,6 +1,12 @@
 import { timingSafeEqual } from "node:crypto";
 
 import { ajouterJours, joursEntre } from "../cycle";
+import {
+  direSante,
+  sante,
+  type Battements,
+  type ReglagesSante,
+} from "../battement";
 import { etatDe, type Etat } from "../etats";
 import type { ReponseWeb, RequeteWeb } from "../web";
 import { offresActives, type Grille } from "../offre";
@@ -59,6 +65,15 @@ const ETATS: readonly Etat[] = [
 
 export interface ReglagesApi {
   tableau: Tableau;
+  /**
+   * De quoi dire si le moteur tourne encore. Facultatif.
+   *
+   * Sans lui, `GET /sante` répond 501 — la route existe, l'hôte ne trace pas
+   * ses passages. C'est une réponse plus utile qu'un 404, qui ferait chercher
+   * une faute de frappe.
+   */
+  battements?: Battements;
+  sante?: ReglagesSante;
   /**
    * La grille tarifaire, quand l'hôte veut l'exposer. Facultatif.
    *
@@ -239,6 +254,47 @@ export function routeurApi(
     }
 
     const maintenant = new Date();
+
+    /**
+     * L'état du moteur, avant tout le reste.
+     *
+     * ─────────────────────────────────────────────────────────────────────
+     * C'EST LA PREMIÈRE CHOSE QU'UN TABLEAU DE BORD DOIT LIRE
+     *
+     * Tous les autres chiffres de cette API sont justes — l'état se déduit des
+     * dates, donc il ne ment jamais. Mais ils ne disent pas si quelqu'un
+     * **agit** dessus.
+     *
+     * Un tableau de bord qui affiche « 6 abonnés en grâce » alors que le
+     * passage quotidien est arrêté depuis dix jours est pire qu'un tableau de
+     * bord vide : il donne l'impression que le système travaille.
+     */
+    if (morceaux[0] === "sante" && morceaux.length === 1) {
+      if (!reglages.battements) {
+        return rendre(
+          json(501, {
+            erreur:
+              "Cet hôte ne trace pas ses passages. Passez `battements` à " +
+              "`routeurApi`, et remplacez `passer()` par `passerEtTracer()` " +
+              "dans votre tâche quotidienne.",
+          }),
+        );
+      }
+
+      const etat = await sante(reglages.battements, reglages.sante, maintenant);
+
+      return rendre(
+        json(200, {
+          ...etat,
+          // Une phrase et son action, pas un mot seul : « BLOQUE » n'aide
+          // personne. C'est ce que l'écran affiche tel quel.
+          ...direSante(etat),
+          dernier:
+            "dernier" in etat ? etat.dernier.toISOString() : null,
+          depuis: "depuis" in etat ? etat.depuis.toISOString() : null,
+        }),
+      );
+    }
 
     if (morceaux[0] === "resume" && morceaux.length === 1) {
       return rendre(json(200, await resume(reglages, maintenant)));

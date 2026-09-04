@@ -492,3 +492,97 @@ describe("les coordonnées de l'abonné", () => {
     expect((corps["lignes"] as Record<string, unknown>[])[0]!["abonne"]).toBeNull();
   });
 });
+
+describe("la santé du moteur, par l'API", () => {
+  const battements = (trace: unknown) => ({
+    async commencer() {
+      return "p-1";
+    },
+    async terminer() {},
+    async echouer() {},
+    async dernier() {
+      return trace as never;
+    },
+  });
+
+  it("est la première chose qu'un tableau de bord doit lire", async () => {
+    // Tous les autres chiffres de cette API sont justes — l'état se déduit des
+    // dates. Mais ils ne disent pas si quelqu'un AGIT dessus. « 6 abonnés en
+    // grâce » alors que le passage est arrêté depuis dix jours est pire qu'un
+    // tableau de bord vide : cela donne l'impression que le système travaille.
+    const f = fauxTableau([ligne()]);
+    const api = routeurApi({
+      tableau: f.tableau,
+      jeton: JETON,
+      battements: battements({
+        id: "p-1",
+        commenceLe: new Date(Date.now() - 50 * 3_600_000),
+        termineLe: new Date(Date.now() - 50 * 3_600_000),
+        vus: 0, relances: 0, suspendus: 0, clos: 0, injoignables: 0,
+        echecs: 0, lotPlein: false, erreur: null,
+      }),
+    });
+
+    const corps = lire((await api(get("/sante"))).corps);
+
+    expect(corps["va"]).toBe("MUET");
+    // Une phrase et son action, pas un mot seul.
+    expect(String(corps["titre"])).toContain("Aucun passage");
+    expect(String(corps["quoiFaire"])).toContain("relance");
+  });
+
+  it("dit « rien à faire » quand le moteur tourne", async () => {
+    const f = fauxTableau([ligne()]);
+    const api = routeurApi({
+      tableau: f.tableau,
+      jeton: JETON,
+      battements: battements({
+        id: "p-1",
+        commenceLe: new Date(Date.now() - 2 * 3_600_000),
+        termineLe: new Date(Date.now() - 2 * 3_600_000),
+        vus: 12, relances: 3, suspendus: 0, clos: 0, injoignables: 0,
+        echecs: 0, lotPlein: false, erreur: null,
+      }),
+    });
+
+    const corps = lire((await api(get("/sante"))).corps);
+
+    expect(corps["va"]).toBe("BIEN");
+    expect(corps["quoiFaire"]).toBe("Rien à faire.");
+  });
+
+  it("distingue « jamais tourné » de « ne tourne plus »", async () => {
+    const f = fauxTableau([ligne()]);
+    const api = routeurApi({
+      tableau: f.tableau,
+      jeton: JETON,
+      battements: battements(null),
+    });
+
+    const corps = lire((await api(get("/sante"))).corps);
+
+    expect(corps["va"]).toBe("JAMAIS");
+    expect(String(corps["quoiFaire"])).toContain("planifiée");
+  });
+
+  it("répond 501 quand l'hôte ne trace pas ses passages", async () => {
+    // La route existe, l'hôte ne la sert pas. Un 404 ferait chercher une faute
+    // de frappe dans l'URL.
+    const f = fauxTableau([ligne()]);
+    const r = await routeurApi({ tableau: f.tableau, jeton: JETON })(get("/sante"));
+
+    expect(r.statut).toBe(501);
+    expect(String(lire(r.corps)["erreur"])).toContain("passerEtTracer");
+  });
+
+  it("exige le jeton, comme le reste de l'API", async () => {
+    const f = fauxTableau([ligne()]);
+    const api = routeurApi({
+      tableau: f.tableau,
+      jeton: JETON,
+      battements: battements(null),
+    });
+
+    expect((await api(get("/sante", { entetes: {} }))).statut).toBe(401);
+  });
+});

@@ -147,6 +147,16 @@
         "default": "./dist/intervention.cjs"
       }
     },
+    "./battement": {
+      "import": {
+        "types": "./dist/battement.d.ts",
+        "default": "./dist/battement.js"
+      },
+      "require": {
+        "types": "./dist/battement.d.cts",
+        "default": "./dist/battement.cjs"
+      }
+    },
     "./encaissement": {
       "import": {
         "types": "./dist/encaissement/port.d.ts",

@@ -179,6 +179,7 @@ export interface ClientNdank {
   relance: Delegue<LigneRelance>;
   versement: DelegueVersement;
   evenement: Delegue<{ id: string }>;
+  passage: Delegue<LignePassage>;
 
   /**
    * La transaction interactive de Prisma.
@@ -201,4 +202,19 @@ export interface ClientNdank {
    * disant.
    */
   $transaction?<T>(fn: (tx: ClientNdank) => Promise<T>): Promise<T>;
+}
+
+/** Une ligne `passage`, telle que le battement la lit. */
+export interface LignePassage {
+  id: string;
+  commenceLe: Date;
+  termineLe: Date | null;
+  vus: number;
+  relances: number;
+  suspendus: number;
+  clos: number;
+  injoignables: number;
+  echecs: number;
+  lotPlein: boolean;
+  erreur: string | null;
 }
