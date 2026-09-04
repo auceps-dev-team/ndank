@@ -52,10 +52,21 @@ export interface LigneAbonnement {
 
 /** Une ligne `abonne`. */
 export interface LigneAbonne {
+  id: string;
   nom: string | null;
   courriel: string | null;
   telephone: string | null;
   appareils: string[];
+}
+
+/** Une ligne `offre`, telle que la grille la lit. */
+export interface LigneOffre {
+  id: string;
+  libelle: string;
+  montant: number;
+  devise: string;
+  cadence: string;
+  actif: boolean;
 }
 
 /** Une ligne `relance`, réduite à ce qui sert. */
@@ -107,6 +118,7 @@ export interface Delegue<Ligne> {
 export interface ClientNdank {
   abonnement: Delegue<LigneAbonnement>;
   abonne: Delegue<LigneAbonne>;
+  offre: Delegue<LigneOffre>;
   relance: Delegue<LigneRelance>;
   versement: Delegue<LigneVersement>;
   evenement: Delegue<{ id: string }>;

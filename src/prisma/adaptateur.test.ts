@@ -5,8 +5,14 @@ import { passer } from "../moteur";
 import type { Canal, Coordonnees, Message, Ports } from "../ports";
 import { routeurApi } from "../api/routeur";
 import { bornesDe } from "../api/tableau";
+import { offresActives } from "../offre";
 import { abonnementDe, portsPrisma } from "./adaptateur";
-import type { ClientNdank, LigneAbonnement } from "./client";
+import type {
+  ClientNdank,
+  LigneAbonne,
+  LigneAbonnement,
+  LigneOffre,
+} from "./client";
 
 const DEPART = new Date("2026-01-10T00:00:00Z");
 const PROJET = "prj-1";
@@ -19,12 +25,15 @@ const PROJET = "prj-1";
  * cloisonnement par projet, les exclusions du lot, l'idempotence des écritures.
  * Ces clauses-là ne se voient pas dans le résultat ; elles ne se voient que là.
  */
-function fauxClient(abonnements: LigneAbonnement[] = []) {
+function fauxClient(
+  abonnements: LigneAbonnement[] = [],
+  offres: LigneOffre[] = [],
+) {
   const appels: Array<{ table: string; methode: string; args: any }> = [];
   const relances = new Map<string, { canaux: string[] }>();
   const evenements = new Map<string, unknown>();
   const versements: Array<{ id: string; identifiantFournisseur: string; compteLe: Date | null }> = [];
-  const abonnes = new Map<string, { nom: string | null; courriel: string | null; telephone: string | null; appareils: string[] }>();
+  const abonnes = new Map<string, LigneAbonne>();
 
   const noter = (table: string, methode: string, args: any) => {
     appels.push({ table, methode, args });
@@ -98,7 +107,11 @@ function fauxClient(abonnements: LigneAbonnement[] = []) {
       },
       async create(args) {
         noter("abonnement", "create", args);
-        return {};
+        // Le vrai client rend la ligne créée : l'adaptateur la relit pour la
+        // ramener à ce que le moteur sait lire.
+        const creee = { id: `abo-${abonnements.length + 1}`, ...args.data };
+        abonnements.push(creee);
+        return creee;
       },
     },
 
@@ -112,6 +125,40 @@ function fauxClient(abonnements: LigneAbonnement[] = []) {
       },
       async findMany() {
         return [];
+      },
+      async findFirst() {
+        return null;
+      },
+      async update() {
+        return {};
+      },
+      async updateMany() {
+        return {};
+      },
+      async upsert(args) {
+        noter("abonne", "upsert", args);
+        const reference = args.where.projetId_reference.reference;
+        const id = `usr-${reference}`;
+        abonnes.set(id, { id, ...args.create, ...args.update });
+        return { id };
+      },
+      async create() {
+        return {};
+      },
+    },
+
+    offre: {
+      async findMany(args) {
+        noter("offre", "findMany", args);
+        return offres.filter(
+          (o) => args?.where?.projetId === undefined || args.where.projetId === PROJET,
+        );
+      },
+      async count() {
+        return offres.length;
+      },
+      async findUnique() {
+        return null;
       },
       async findFirst() {
         return null;
@@ -378,6 +425,7 @@ describe("les coordonnées", () => {
   it("rend la liste des appareils telle quelle", async () => {
     const f = fauxClient([ligne()]);
     f.abonnes.set("usr-1", {
+      id: "usr-1",
       nom: "Awa",
       courriel: "awa@ndank.test",
       telephone: "+2250700000000",
@@ -474,6 +522,7 @@ describe("le moteur tourne contre ces ports, sans rien changer", () => {
     const c = cycleApresPaiement(DEPART, "MENSUEL");
     const f = fauxClient([ligne()]);
     f.abonnes.set("usr-1", {
+      id: "usr-1",
       nom: "Awa",
       courriel: "awa@ndank.test",
       telephone: "+2250700000000",
@@ -519,6 +568,7 @@ describe("le moteur tourne contre ces ports, sans rien changer", () => {
     const c = cycleApresPaiement(DEPART, "MENSUEL");
     const f = fauxClient([ligne()]);
     f.abonnes.set("usr-1", {
+      id: "usr-1",
       nom: "Awa",
       courriel: "awa@ndank.test",
       telephone: null,
@@ -662,5 +712,119 @@ describe("le tableau, pour l'API du tableau de bord", () => {
     const corps = JSON.parse(r.corps) as { lignes: { etat: string }[] };
     expect(corps.lignes).toHaveLength(1);
     expect(corps.lignes[0]!.etat).toBe("SUSPENDUE");
+  });
+});
+
+describe("la souscription, contre le schéma", () => {
+  it("crée l'abonné par upsert, pour que deux clics n'en fassent pas deux", async () => {
+    // L'idempotence est une contrainte de la base — l'unicité
+    // `(projetId, reference)` — et non une intention du code.
+    const f = fauxClient([]);
+    const p = portsPrisma(f.client, { projetId: PROJET });
+
+    const id = await p.souscriptions.abonne("usr-9", {
+      nom: "Awa",
+      courriel: "awa@ndank.test",
+      telephone: "+2250700000000",
+      appareils: [],
+    });
+
+    expect(id).toBe("usr-usr-9");
+
+    const appel = f.appels.find((a) => a.table === "abonne" && a.methode === "upsert")!;
+    expect(appel.args.where.projetId_reference).toEqual({
+      projetId: PROJET,
+      reference: "usr-9",
+    });
+    // Les coordonnées sont rafraîchies : quelqu'un qui souscrit à une seconde
+    // offre a pu changer de numéro, et garder l'ancien ferait partir la
+    // relance sur une ligne résiliée.
+    expect(appel.args.update.telephone).toBe("+2250700000000");
+  });
+
+  it("cherche un abonnement en cours avant d'en ouvrir un second", async () => {
+    const f = fauxClient([ligne({ id: "abo-1" })]);
+    const p = portsPrisma(f.client, { projetId: PROJET });
+
+    await p.souscriptions.enCours("usr-1", "createur");
+
+    const appel = f.appels.find(
+      (a) => a.table === "abonnement" && a.methode === "findFirst",
+    )!;
+
+    expect(appel.args.where).toMatchObject({
+      projetId: PROJET,
+      abonneId: "usr-1",
+      offreId: "createur",
+      resilieeLe: null,
+      closLe: null,
+    });
+  });
+
+  it("recopie le prix et le libellé dans l'abonnement, sans jointure", async () => {
+    // Décision du schéma : augmenter un tarif ne doit pas changer
+    // rétroactivement ce que doivent les abonnés en cours.
+    const f = fauxClient([]);
+    const p = portsPrisma(f.client, { projetId: PROJET });
+    const c = cycleApresPaiement(DEPART, "MENSUEL");
+
+    await p.souscriptions.ouvrir({
+      abonneId: "usr-1",
+      offre: {
+        id: "createur",
+        libelle: "Pass Créateur",
+        montant: 2000,
+        devise: "XOF",
+        cadence: "MENSUEL",
+      },
+      cycle: c,
+    });
+
+    const appel = f.appels.find(
+      (a) => a.table === "abonnement" && a.methode === "create",
+    )!;
+
+    expect(appel.args.data).toMatchObject({
+      projetId: PROJET,
+      abonneId: "usr-1",
+      offreId: "createur",
+      libelle: "Pass Créateur",
+      montant: 2000,
+      devise: "XOF",
+      cadence: "MENSUEL",
+      echeance: c.echeance,
+      repriseJusquA: c.repriseJusquA,
+    });
+  });
+});
+
+describe("la grille lue en base", () => {
+  it("est vérifiée, et non rendue telle quelle", async () => {
+    // Une devise mal saisie dans un tableau d'administration passerait sinon
+    // jusqu'au fournisseur, qui la refuserait avec un message parlant du
+    // compte marchand.
+    const f = fauxClient([], [
+      { id: "o1", libelle: "Pass", montant: 2000, devise: "CFA", cadence: "MENSUEL", actif: true },
+    ]);
+
+    const p = portsPrisma(f.client, { projetId: PROJET });
+
+    await expect(p.offres()).rejects.toThrow(/XOF/);
+  });
+
+  it("rend les offres du projet, actives comme retirées", async () => {
+    const f = fauxClient([], [
+      { id: "o1", libelle: "Pass", montant: 2000, devise: "XOF", cadence: "MENSUEL", actif: true },
+      { id: "o2", libelle: "Ancien", montant: 1000, devise: "XOF", cadence: "MENSUEL", actif: false },
+    ]);
+
+    const p = portsPrisma(f.client, { projetId: PROJET });
+    const g = await p.offres();
+
+    expect(g).toHaveLength(2);
+    expect(offresActives(g).map((o) => o.id)).toEqual(["o1"]);
+
+    const appel = f.appels.find((a) => a.table === "offre")!;
+    expect(appel.args.where.projetId).toBe(PROJET);
   });
 });

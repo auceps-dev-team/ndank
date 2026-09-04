@@ -107,6 +107,26 @@
         "default": "./dist/reglement.cjs"
       }
     },
+    "./offre": {
+      "import": {
+        "types": "./dist/offre.d.ts",
+        "default": "./dist/offre.js"
+      },
+      "require": {
+        "types": "./dist/offre.d.cts",
+        "default": "./dist/offre.cjs"
+      }
+    },
+    "./souscription": {
+      "import": {
+        "types": "./dist/souscription.d.ts",
+        "default": "./dist/souscription.js"
+      },
+      "require": {
+        "types": "./dist/souscription.d.cts",
+        "default": "./dist/souscription.cjs"
+      }
+    },
     "./encaissement": {
       "import": {
         "types": "./dist/encaissement/port.d.ts",

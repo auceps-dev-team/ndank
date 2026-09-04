@@ -4,6 +4,8 @@ import type { Creances, EtatCreance } from "../encaissement/reconciliation";
 import { CREANCE_VIERGE } from "../encaissement/reconciliation";
 import type { Bornes, LigneTableau, Page, Tableau } from "../api/tableau";
 import type { DossierAbonnement } from "../dossier";
+import { grille, type Grille, type Offre } from "../offre";
+import type { NouvelAbonnement, Souscriptions } from "../souscription";
 import type { ClientNdank, LigneAbonnement } from "./client";
 
 /**
@@ -42,6 +44,10 @@ export interface PortsPrisma {
   dossier: DossierAbonnement;
   /** Pour l'API que le tableau de bord consomme. */
   tableau: Tableau;
+  /** Pour faire naître un abonnement à partir d'un premier paiement. */
+  souscriptions: Souscriptions;
+  /** La grille tarifaire telle qu'elle est en base. */
+  offres(): Promise<Grille>;
 }
 
 /** `avant` est strict, `apres` est inclusif — comme dans `bornesDe`. */
@@ -397,5 +403,117 @@ export function portsPrisma(
     },
   };
 
-  return { lecture, ecriture, creances, dossier, tableau };
+  const souscriptions: Souscriptions = {
+    /**
+     * Trouve l'abonné ou le crée.
+     *
+     * `upsert` sur l'unicité `(projetId, reference)` : deux souscriptions
+     * simultanées du même abonné ne peuvent pas en écrire deux. C'est la même
+     * règle que pour les relances — l'idempotence est une contrainte de la
+     * base, pas une intention du code.
+     *
+     * Les coordonnées sont mises à jour à chaque passage : quelqu'un qui
+     * souscrit à une seconde offre a pu changer de numéro entre-temps, et
+     * garder l'ancien ferait partir la relance sur une ligne résiliée.
+     */
+    async abonne(reference: string, coordonnees: Coordonnees): Promise<string> {
+      const ligne = (await client.abonne.upsert({
+        where: { projetId_reference: { projetId, reference } },
+        create: {
+          projetId,
+          reference,
+          nom: coordonnees.nom,
+          courriel: coordonnees.courriel,
+          telephone: coordonnees.telephone,
+          appareils: coordonnees.appareils,
+        },
+        update: {
+          nom: coordonnees.nom,
+          courriel: coordonnees.courriel,
+          telephone: coordonnees.telephone,
+          appareils: coordonnees.appareils,
+        },
+        select: { id: true },
+      })) as { id: string };
+
+      return ligne.id;
+    },
+
+    /**
+     * L'abonnement en cours de cet abonné pour cette offre.
+     *
+     * « En cours » : ni résilié, ni clos. Un abonnement expiré, lui, **est**
+     * clos par le passage quotidien — donc quelqu'un qui revient après six mois
+     * en souscrit bien un nouveau, ce qui est la règle : se réabonner repart de
+     * zéro.
+     */
+    async enCours(abonneId: string, offreId: string): Promise<AbonnementLu | null> {
+      const ligne = await client.abonnement.findFirst({
+        where: {
+          projetId,
+          abonneId,
+          offreId,
+          resilieeLe: null,
+          closLe: null,
+        },
+      });
+
+      return ligne === null ? null : abonnementDe(ligne);
+    },
+
+    /**
+     * Crée l'abonnement.
+     *
+     * Le prix et le libellé sont **recopiés** depuis l'offre, et non lus par
+     * jointure. C'est une décision du schéma : augmenter un tarif ne doit pas
+     * changer rétroactivement ce que doivent les abonnés en cours, y compris
+     * sur un cycle déjà à moitié payé.
+     */
+    async ouvrir(nouveau: NouvelAbonnement): Promise<AbonnementLu> {
+      const ligne = (await client.abonnement.create({
+        data: {
+          projetId,
+          abonneId: nouveau.abonneId,
+          offreId: nouveau.offre.id,
+          libelle: nouveau.offre.libelle,
+          montant: nouveau.offre.montant,
+          devise: nouveau.offre.devise,
+          cadence: nouveau.offre.cadence,
+          debut: nouveau.cycle.debut,
+          echeance: nouveau.cycle.echeance,
+          accesJusquA: nouveau.cycle.accesJusquA,
+          repriseJusquA: nouveau.cycle.repriseJusquA,
+        },
+      })) as LigneAbonnement;
+
+      return abonnementDe(ligne);
+    },
+  };
+
+  /**
+   * La grille, lue en base et **vérifiée**.
+   *
+   * `grille()` lève sur une ligne fautive plutôt que de la rendre. Une devise
+   * mal saisie dans un tableau d'administration passerait sinon jusqu'au
+   * fournisseur, qui la refuserait avec un message parlant du compte marchand.
+   */
+  async function offres(): Promise<Grille> {
+    const lignes = await client.offre.findMany({
+      where: { projetId },
+      orderBy: { montant: "asc" },
+    });
+
+    return grille(
+      lignes.map((l) => ({
+        id: l.id,
+        libelle: l.libelle,
+        montant: l.montant,
+        devise: l.devise,
+        cadence: l.cadence as Offre["cadence"],
+        actif: l.actif,
+      })),
+    );
+  }
+
+  return { lecture, ecriture, creances, dossier, tableau, souscriptions, offres };
 }
