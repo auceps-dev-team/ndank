@@ -36,6 +36,31 @@ export interface Abonnement {
   cycle: Cycle;
   /** Posée quand l'abonné résilie. Elle l'emporte sur tout le reste. */
   resilieeLe: Date | null;
+  /**
+   * Posée quand le marchand suspend la main, et levée quand il rétablit.
+   *
+   * ═══════════════════════════════════════════════════════════════════════
+   * UNE DATE STOCKÉE, DANS UN MODULE QUI DIT QUE L'ÉTAT NE SE STOCKE PAS
+   *
+   * La contradiction n'est qu'apparente, et elle vaut d'être levée parce que
+   * c'est la seule colonne de ce genre.
+   *
+   * Ce que l'en-tête refuse, ce sont les **conclusions** : une colonne `etat`
+   * qui dirait « SUSPENDUE » et se désynchroniserait le jour où un passage
+   * rate son tour. Ce qu'il garde, ce sont les **faits** — quand on a été
+   * payé, quand on a rappelé, quand l'abonné a résilié.
+   *
+   * « Le marchand a suspendu cet abonné le 4 septembre » est un fait. Aucune
+   * date du cycle ne le porte, et il ne se déduit de rien : un abonné à jour,
+   * suspendu pour un litige, a exactement les mêmes dates que la veille.
+   *
+   * Sans elle, le verbe « suspendre l'accès » du tableau de bord ne pouvait
+   * pas exister — ce qui est la vraie raison de son ajout.
+   *
+   * Facultative pour ne pas casser les hôtes du niveau 1 qui n'en ont pas
+   * besoin : absente, elle vaut « jamais suspendu ».
+   */
+  suspenduLe?: Date | null;
 }
 
 /**
@@ -59,6 +84,11 @@ export interface Abonnement {
 export function etatDe(abonnement: Abonnement, maintenant: Date): Etat {
   if (abonnement.resilieeLe !== null) return "RESILIEE";
 
+  // Juste après la résiliation : une suspension manuelle l'emporte sur les
+  // dates, puisque aucune date ne la porte. Elle vient après parce qu'un abonné
+  // qui a dit non n'a plus à être suspendu — il est déjà parti.
+  if (abonnement.suspenduLe != null) return "SUSPENDUE";
+
   const { cycle } = abonnement;
 
   if (joursEntre(cycle.repriseJusquA, maintenant) > 0) return "EXPIREE";
@@ -71,8 +101,39 @@ export function etatDe(abonnement: Abonnement, maintenant: Date): Etat {
   return "ACTIVE";
 }
 
-/** L'abonné a-t-il droit au service, à cet instant ? */
+/**
+ * L'abonné a-t-il droit au service, à cet instant ?
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ * RÉSILIER N'EST PAS CONFISQUER
+ *
+ * Cette fonction rendait `false` dès qu'un abonnement était résilié, parce
+ * qu'elle se contentait de regarder l'état. C'était injuste, et personne ne
+ * l'avait vu tant qu'aucun écran ne portait le bouton « Résilier ».
+ *
+ * Un abonné qui résilie le 3 a payé jusqu'au 30. Lui couper le service à
+ * l'instant du clic, c'est garder son argent et lui retirer ce qu'il a acheté.
+ * Aucun service sérieux ne fait cela, et celui qui le fait perd la moitié des
+ * gens qui auraient pu revenir.
+ *
+ * Résilier veut dire deux choses, et deux seulement : **plus de relance**, et
+ * **plus de renouvellement**. Le premier est déjà vrai — `gesteDuJour` rend
+ * `RIEN` sur un résilié, et le lot du passage quotidien les écarte. Le second
+ * l'est aussi, puisque plus personne ne paie. Le temps déjà payé, lui, reste dû.
+ *
+ * Une **suspension**, à l'inverse, coupe tout de suite : c'est sa raison
+ * d'être. Le marchand qui suspend le fait pour un litige ou un abus, et
+ * attendre la fin du cycle viderait le geste de son sens.
+ */
 export function accesOuvert(abonnement: Abonnement, maintenant: Date): boolean {
+  if (abonnement.suspenduLe != null) return false;
+
+  if (abonnement.resilieeLe !== null) {
+    // Ce qui a été payé reste dû, jusqu'à la fin de l'accès et pas au-delà :
+    // aucune grâce pour qui a déjà dit non, puisqu'on ne le relancera pas.
+    return joursEntre(abonnement.cycle.accesJusquA, maintenant) <= 0;
+  }
+
   const etat = etatDe(abonnement, maintenant);
   return etat === "ACTIVE" || etat === "A_RENOUVELER";
 }

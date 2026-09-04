@@ -40,6 +40,8 @@ export interface AbonnementLu {
   cadence: Cadence;
   cycle: Cycle;
   resilieeLe: Date | null;
+  /** Posée quand le marchand suspend à la main. Voir `etats.ts`. */
+  suspenduLe?: Date | null;
   /** Ce qu'il faudra payer au prochain renouvellement, en unités mineures. */
   montant: number;
   devise: string;

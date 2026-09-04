@@ -312,6 +312,7 @@ function ligne(partiel: Partial<LigneAbonnement> = {}): LigneAbonnement {
     accesJusquA: c.accesJusquA,
     repriseJusquA: c.repriseJusquA,
     resilieeLe: null,
+    suspenduLe: null,
     closLe: null,
     verse: 0,
     joursAccordes: 0,

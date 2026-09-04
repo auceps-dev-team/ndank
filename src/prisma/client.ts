@@ -44,6 +44,7 @@ export interface LigneAbonnement {
   accesJusquA: Date;
   repriseJusquA: Date;
   resilieeLe: Date | null;
+  suspenduLe: Date | null;
   closLe: Date | null;
   verse: number;
   joursAccordes: number;

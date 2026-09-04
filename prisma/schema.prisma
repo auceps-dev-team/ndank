@@ -232,7 +232,25 @@ model Abonnement {
 
   // ── les faits, et rien que les faits ───────────────────────────────────
   /// Posée quand l'abonné résilie. Elle l'emporte sur tout le reste.
+  ///
+  /// Elle arrête les relances et le renouvellement — pas l'accès. Ce qui a
+  /// été payé reste dû jusqu'à `accesJusquA` : résilier n'est pas confisquer.
   resilieeLe DateTime?
+  /// Posée quand le marchand suspend à la main, levée quand il rétablit.
+  ///
+  /// C'est la seule colonne d'état de ce schéma, et l'exception mérite son
+  /// paragraphe. Ce qu'on refuse ici, ce sont les **conclusions** — une
+  /// colonne `etat` qui dirait « SUSPENDUE » et se désynchroniserait le jour
+  /// où un passage rate son tour. Ce qu'on garde, ce sont les **faits**.
+  ///
+  /// « Le marchand a suspendu cet abonné le 4 septembre » est un fait, et
+  /// aucune date du cycle ne le porte : un abonné à jour, suspendu pour un
+  /// litige, a exactement les mêmes dates que la veille. Sans cette colonne,
+  /// le geste ne peut pas exister.
+  ///
+  /// À la différence de la résiliation, elle coupe l'accès sur-le-champ :
+  /// c'est sa raison d'être.
+  suspenduLe DateTime?
   /// Posée quand le moteur a clos le dossier.
   ///
   /// Cette colonne n'est pas décorative : le contrat de `aRelancer` exige de

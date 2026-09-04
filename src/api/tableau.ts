@@ -110,6 +110,8 @@ export interface LigneTableau {
   accesJusquA: Date;
   repriseJusquA: Date;
   resilieeLe: Date | null;
+  /** Posée quand le marchand suspend à la main. Coupe l'accès sur-le-champ. */
+  suspenduLe: Date | null;
   closLe: Date | null;
 
   /**

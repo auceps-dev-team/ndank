@@ -26,6 +26,7 @@ function ligne(sur: Partial<LigneTableau> = {}): LigneTableau {
     accesJusquA: cycle.accesJusquA,
     repriseJusquA: cycle.repriseJusquA,
     resilieeLe: null,
+    suspenduLe: null,
     closLe: null,
     ...sur,
   };

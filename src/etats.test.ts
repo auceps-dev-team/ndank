@@ -87,9 +87,49 @@ describe("l'accès", () => {
     expect(accesOuvert(a, ajouterJours(a.cycle.accesJusquA, 1))).toBe(false);
   });
 
-  it("est fermé dès la résiliation", () => {
+  it("tient jusqu'à la fin de ce qui a été payé, même après résiliation", () => {
+    // Ce test disait le contraire, et il avait tort. Un abonné qui résilie le
+    // 3 a payé jusqu'au 30 : lui couper le service à l'instant du clic, c'est
+    // garder son argent et lui retirer ce qu'il a acheté.
+    //
+    // Résilier veut dire deux choses, et deux seulement : plus de relance, plus
+    // de renouvellement. Les deux sont déjà vraies ailleurs — `gesteDuJour`
+    // rend RIEN sur un résilié, et le lot du passage les écarte.
     const resilie = abonnement({}, DEPART);
-    expect(accesOuvert(resilie, ajouterJours(DEPART, 1))).toBe(false);
+
+    expect(accesOuvert(resilie, ajouterJours(DEPART, 1))).toBe(true);
+    expect(accesOuvert(resilie, resilie.cycle.accesJusquA)).toBe(true);
+  });
+
+  it("ne donne aucune grâce à qui a résilié", () => {
+    // La grâce existe pour laisser le temps de payer pendant qu'on relance. On
+    // ne relance pas un résilié : la prolonger n'aurait aucun sens.
+    const resilie = abonnement({}, DEPART);
+
+    expect(accesOuvert(resilie, ajouterJours(resilie.cycle.accesJusquA, 1))).toBe(
+      false,
+    );
+  });
+
+  it("se ferme sur-le-champ quand le marchand suspend", () => {
+    // À l'inverse de la résiliation : c'est la raison d'être du geste. On
+    // suspend pour un litige ou un abus, et attendre la fin du cycle le
+    // viderait de son sens.
+    const a = abonnement();
+    const suspendu = { ...a, suspenduLe: DEPART };
+
+    expect(accesOuvert(a, ajouterJours(DEPART, 1))).toBe(true);
+    expect(accesOuvert(suspendu, ajouterJours(DEPART, 1))).toBe(false);
+    expect(etatDe(suspendu, ajouterJours(DEPART, 1))).toBe("SUSPENDUE");
+  });
+
+  it("laisse la résiliation l'emporter sur la suspension", () => {
+    // Un abonné qui a dit non n'a plus à être suspendu : il est déjà parti.
+    const deux = { ...abonnement({}, DEPART), suspenduLe: DEPART };
+
+    expect(etatDe(deux, ajouterJours(DEPART, 1))).toBe("RESILIEE");
+    // Mais l'accès reste coupé : la suspension est le geste le plus fort.
+    expect(accesOuvert(deux, ajouterJours(DEPART, 1))).toBe(false);
   });
 });
 

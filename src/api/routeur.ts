@@ -135,6 +135,7 @@ function versJson(
         repriseJusquA: ligne.repriseJusquA,
       },
       resilieeLe: ligne.resilieeLe,
+      suspenduLe: ligne.suspenduLe,
     },
     maintenant,
   );
@@ -155,6 +156,7 @@ function versJson(
     repriseJusquA: ligne.repriseJusquA.toISOString(),
     joursRestants: joursEntre(maintenant, ligne.accesJusquA),
     resilieeLe: ligne.resilieeLe?.toISOString() ?? null,
+    suspenduLe: ligne.suspenduLe?.toISOString() ?? null,
     closLe: ligne.closLe?.toISOString() ?? null,
     // Absent quand l'implémentation ne joint pas l'abonné. Un tableau de bord
     // qui n'affiche que des identifiants est inutilisable : on relance

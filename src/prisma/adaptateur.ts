@@ -109,6 +109,7 @@ function ligneDe(l: LigneAbonnement): LigneTableau {
     accesJusquA: l.accesJusquA,
     repriseJusquA: l.repriseJusquA,
     resilieeLe: l.resilieeLe,
+    suspenduLe: l.suspenduLe,
     closLe: l.closLe,
     // Joint par `include`, quand la requête l'a demandé. On relance quelqu'un,
     // pas un `cuid`.
@@ -170,6 +171,7 @@ export function abonnementDe(ligne: LigneAbonnement): AbonnementLu {
       repriseJusquA: ligne.repriseJusquA,
     },
     resilieeLe: ligne.resilieeLe,
+    suspenduLe: ligne.suspenduLe,
     montant: ligne.montant,
     devise: ligne.devise,
     libelle: ligne.libelle,
