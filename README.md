@@ -4,6 +4,13 @@
 
 *Ndank ndank mooy japp golo ci ñaay* — petit à petit, on attrape le singe.
 
+```
+npm install ndank
+```
+
+Aucune dépendance de production. Node 18 ou plus, ESM et CommonJS, types
+inclus. Le schéma du niveau 2 voyage avec le paquet.
+
 ---
 
 ## Le problème
@@ -99,8 +106,8 @@ une ligne.
 ### Niveau 1 en pratique
 
 ```ts
-import { passer } from "./src/moteur";
-import { lienDe } from "./src/page/lien";
+import { passer } from "ndank";
+import { lienDe } from "ndank/page/lien";
 
 const ports = { lecture, ecriture, envoi };   // vos implémentations
 
@@ -129,7 +136,7 @@ est plafonné — et par évincer les vivants.
 Quand un paiement est confirmé, l'hôte enchaîne le cycle :
 
 ```ts
-import { finaliserRenouvellement } from "./src/moteur";
+import { finaliserRenouvellement } from "ndank";
 
 const suivant = await finaliserRenouvellement(ports, abonnement, new Date());
 ```
@@ -142,11 +149,15 @@ de relancer, et un hôte qui veut confirmer un paiement le fait chez lui.
 ### Niveau 2 : le schéma fourni
 
 Les tables sont dans [`prisma/schema.prisma`](prisma/schema.prisma) — neuf
-modèles, validés par `prisma validate`. Le schéma se copie dans votre projet et
-se migre avec votre propre historique ; Ndank ne livre pas de migrations, qui
-entreraient en conflit avec les vôtres.
+modèles, validés par `prisma validate`. Il voyage **avec le paquet** : le
+README l'annonçait depuis la 0.4.0 et `files` ne le contenait pas, si bien qu'un
+hôte qui installait Ndank ne le trouvait nulle part.
+
+Le schéma se copie dans votre projet et se migre avec votre propre historique ;
+Ndank ne livre pas de migrations, qui entreraient en conflit avec les vôtres.
 
 ```
+cp node_modules/ndank/prisma/schema.prisma prisma/ndank.prisma
 cp .env.example .env      # puis remplir DATABASE_URL et vos clés
 npx prisma migrate dev
 ```
@@ -155,8 +166,8 @@ Puis les ports sont déjà écrits — c'est tout ce que le niveau 2 vous éparg
 
 ```ts
 import { PrismaClient } from "@prisma/client";
-import { portsPrisma } from "./src/prisma/adaptateur";
-import { passer } from "./src/moteur";
+import { portsPrisma } from "ndank/prisma";
+import { passer } from "ndank";
 
 const { lecture, ecriture, creances } = portsPrisma(new PrismaClient(), {
   projetId: "prj-...",
@@ -199,8 +210,8 @@ L'argent est en `Int`, en unités mineures — jamais `Float`, jamais `Decimal`.
 trois formes du message et livre quatre passerelles.
 
 ```ts
-import { envoiCompose } from "./src/envoi/compose";
-import { transporteurCourriel, transporteurSms } from "./src/envoi/registre";
+import { envoiCompose } from "ndank/envoi";
+import { transporteurCourriel, transporteurSms } from "ndank/envoi/registre";
 
 const envoi = envoiCompose({
   courriel: transporteurCourriel("resend", {
@@ -229,7 +240,7 @@ permet de démarrer avec un seul canal.
 ### Vérifier au démarrage, pas au troisième jour
 
 ```ts
-import { verifierEnvoi } from "./src/envoi/registre";
+import { verifierEnvoi } from "ndank/envoi/registre";
 
 const problemes = verifierEnvoi({
   courriel: { passerelle: "resend", identifiants: process.env },
@@ -254,7 +265,7 @@ reçu, et qui n'a aucun moyen de savoir ce qui s'est passé.
 ### Un passage à blanc avant le premier vrai
 
 ```ts
-import { envoiMuet } from "./src/envoi/compose";
+import { envoiMuet } from "ndank/envoi";
 
 const { envoi, retenus } = envoiMuet();
 await passer({ lecture, ecriture, envoi }, { lien, montant });
@@ -319,7 +330,7 @@ passe jamais par lui** : il va du portefeuille de l'abonné au compte marchand d
 l'hôte, chez le fournisseur que l'hôte a choisi.
 
 ```ts
-import { fournisseur } from "./src/encaissement/registre";
+import { fournisseur } from "ndank/encaissement/registre";
 
 const encaissement = fournisseur("flutterwave", {
   cleSecrete: process.env.FLW_CLE,
@@ -336,7 +347,7 @@ partie longue. En attendant, ils lèvent un message qui dit quoi faire.
 Une configuration incomplète échoue au démarrage, pas en production :
 
 ```ts
-import { champsManquants } from "./src/encaissement/registre";
+import { champsManquants } from "ndank/encaissement/registre";
 
 champsManquants("mtn", process.env); // ["cleAbonnement"] — et on refuse de démarrer
 ```
@@ -392,7 +403,7 @@ Ndank fabrique le lien qui part dans la relance. Ce n'est pas un détail de
 confort.
 
 ```ts
-import { lienDe } from "./src/page/lien";
+import { lienDe } from "ndank/page/lien";
 
 const reglages = {
   lien: (a) => lienDe("https://p.baobart.ci/v", process.env.NDANK_SECRET, a.id),
@@ -428,8 +439,8 @@ aussi le seul endroit où l'on puisse mesurer combien de gens ouvrent la page
 sans aller au bout.
 
 ```ts
-import { routeurPage } from "./src/page/routeur";
-import { versFetch } from "./src/page/montage";
+import { routeurPage } from "ndank/page";
+import { versFetch } from "ndank/page/montage";
 
 const routeur = routeurPage({
   base: "https://p.baobart.ci/v",
@@ -483,7 +494,7 @@ doivent tomber ou réussir **ensemble**, et seul l'hôte connaît sa base.
 ## Les webhooks
 
 ```ts
-import { gestionnaireWebhook } from "./src/webhook/gestionnaire";
+import { gestionnaireWebhook } from "ndank/webhook";
 
 const recevoir = gestionnaireWebhook({
   fournisseurs: { paystack, flutterwave },
@@ -526,7 +537,7 @@ concluent — d'où l'exigence que `surIssue` soit idempotente.
 ## L'API du tableau de bord
 
 ```ts
-import { routeurApi } from "./src/api/routeur";
+import { routeurApi } from "ndank/api";
 
 const api = routeurApi({ tableau, jeton: process.env.NDANK_JETON_TABLEAU });
 
@@ -581,7 +592,7 @@ l'espace fine insécable qu'`Intl.NumberFormat` place entre un montant et sa
 devise en français : elle est dans **chaque** relance.
 
 ```ts
-import { replier, segments } from "./src/gsm7";
+import { replier, segments } from "ndank/gsm7";
 
 const texte = replier(`Renouvelle pour ${montant} : ${lien}`);
 segments(texte); // 1 — à vérifier, pas à supposer
@@ -593,7 +604,7 @@ d'abonné effacé l'est — et dans la zone où Ndank tourne, ce n'est pas un ca
 d'école. Quand la perte compte, `replierAvecPertes` dit ce qu'il a supprimé :
 
 ```ts
-import { replierAvecPertes } from "./src/gsm7";
+import { replierAvecPertes } from "ndank/gsm7";
 
 const { texte, perdus } = replierAvecPertes(nom);
 if (perdus.length > 0) { /* replier sur autre chose que le nom */ }
@@ -630,6 +641,11 @@ Ce qui change d'une version à l'autre est consigné dans
 
 MIT — voir [LICENSE](LICENSE).
 
-Le paquet reste `private` : la licence dit ce qu'on a le droit de faire du code,
-pas qu'il soit prêt à être publié sur npm. Les niveaux 2 et 3 n'existent pas
-encore, et une version partie sur npm se reprend mal.
+Le paquet a cessé d'être `private` à la 0.8.0, quand il est devenu installable :
+`npm publish` était refusé, `main` pointait sur du TypeScript brut, et il n'y
+avait aucune étape de construction. Ce qui manquait n'était pas la permission,
+c'était le paquet.
+
+`npm run verifier` enchaîne la vérification de types, les tests, la
+construction — et `prepublishOnly` l'appelle, pour qu'une version ne parte pas
+sans être passée par là. Une version partie sur un registre se reprend mal.

@@ -1,45 +1,283 @@
 {
   "name": "ndank",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Abonnements par mobile money, sans carte bancaire.",
   "type": "module",
-  "main": "./src/moteur.ts",
-  "types": "./src/moteur.ts",
+  "main": "./dist/moteur.cjs",
+  "module": "./dist/moteur.js",
+  "types": "./dist/moteur.d.ts",
   "exports": {
-    ".": "./src/moteur.ts",
-    "./cycle": "./src/cycle.ts",
-    "./etats": "./src/etats.ts",
-    "./ports": "./src/ports.ts",
-    "./http": "./src/http.ts",
-    "./web": "./src/web.ts",
-    "./dossier": "./src/dossier.ts",
-    "./gsm7": "./src/gsm7.ts",
-    "./reglement": "./src/reglement.ts",
-    "./encaissement": "./src/encaissement/port.ts",
-    "./encaissement/registre": "./src/encaissement/registre.ts",
-    "./encaissement/reconciliation": "./src/encaissement/reconciliation.ts",
-    "./envoi": "./src/envoi/compose.ts",
-    "./envoi/port": "./src/envoi/port.ts",
-    "./envoi/redaction": "./src/envoi/redaction.ts",
-    "./envoi/registre": "./src/envoi/registre.ts",
-    "./page": "./src/page/routeur.ts",
-    "./page/lien": "./src/page/lien.ts",
-    "./page/port": "./src/page/port.ts",
-    "./page/montage": "./src/page/montage.ts",
-    "./webhook": "./src/webhook/gestionnaire.ts",
-    "./api": "./src/api/routeur.ts",
-    "./api/tableau": "./src/api/tableau.ts",
-    "./prisma": "./src/prisma/adaptateur.ts"
+    ".": {
+      "import": {
+        "types": "./dist/moteur.d.ts",
+        "default": "./dist/moteur.js"
+      },
+      "require": {
+        "types": "./dist/moteur.d.cts",
+        "default": "./dist/moteur.cjs"
+      }
+    },
+    "./cycle": {
+      "import": {
+        "types": "./dist/cycle.d.ts",
+        "default": "./dist/cycle.js"
+      },
+      "require": {
+        "types": "./dist/cycle.d.cts",
+        "default": "./dist/cycle.cjs"
+      }
+    },
+    "./etats": {
+      "import": {
+        "types": "./dist/etats.d.ts",
+        "default": "./dist/etats.js"
+      },
+      "require": {
+        "types": "./dist/etats.d.cts",
+        "default": "./dist/etats.cjs"
+      }
+    },
+    "./ports": {
+      "import": {
+        "types": "./dist/ports.d.ts",
+        "default": "./dist/ports.js"
+      },
+      "require": {
+        "types": "./dist/ports.d.cts",
+        "default": "./dist/ports.cjs"
+      }
+    },
+    "./http": {
+      "import": {
+        "types": "./dist/http.d.ts",
+        "default": "./dist/http.js"
+      },
+      "require": {
+        "types": "./dist/http.d.cts",
+        "default": "./dist/http.cjs"
+      }
+    },
+    "./web": {
+      "import": {
+        "types": "./dist/web.d.ts",
+        "default": "./dist/web.js"
+      },
+      "require": {
+        "types": "./dist/web.d.cts",
+        "default": "./dist/web.cjs"
+      }
+    },
+    "./dossier": {
+      "import": {
+        "types": "./dist/dossier.d.ts",
+        "default": "./dist/dossier.js"
+      },
+      "require": {
+        "types": "./dist/dossier.d.cts",
+        "default": "./dist/dossier.cjs"
+      }
+    },
+    "./html": {
+      "import": {
+        "types": "./dist/html.d.ts",
+        "default": "./dist/html.js"
+      },
+      "require": {
+        "types": "./dist/html.d.cts",
+        "default": "./dist/html.cjs"
+      }
+    },
+    "./gsm7": {
+      "import": {
+        "types": "./dist/gsm7.d.ts",
+        "default": "./dist/gsm7.js"
+      },
+      "require": {
+        "types": "./dist/gsm7.d.cts",
+        "default": "./dist/gsm7.cjs"
+      }
+    },
+    "./reglement": {
+      "import": {
+        "types": "./dist/reglement.d.ts",
+        "default": "./dist/reglement.js"
+      },
+      "require": {
+        "types": "./dist/reglement.d.cts",
+        "default": "./dist/reglement.cjs"
+      }
+    },
+    "./encaissement": {
+      "import": {
+        "types": "./dist/encaissement/port.d.ts",
+        "default": "./dist/encaissement/port.js"
+      },
+      "require": {
+        "types": "./dist/encaissement/port.d.cts",
+        "default": "./dist/encaissement/port.cjs"
+      }
+    },
+    "./encaissement/registre": {
+      "import": {
+        "types": "./dist/encaissement/registre.d.ts",
+        "default": "./dist/encaissement/registre.js"
+      },
+      "require": {
+        "types": "./dist/encaissement/registre.d.cts",
+        "default": "./dist/encaissement/registre.cjs"
+      }
+    },
+    "./encaissement/reconciliation": {
+      "import": {
+        "types": "./dist/encaissement/reconciliation.d.ts",
+        "default": "./dist/encaissement/reconciliation.js"
+      },
+      "require": {
+        "types": "./dist/encaissement/reconciliation.d.cts",
+        "default": "./dist/encaissement/reconciliation.cjs"
+      }
+    },
+    "./envoi": {
+      "import": {
+        "types": "./dist/envoi/compose.d.ts",
+        "default": "./dist/envoi/compose.js"
+      },
+      "require": {
+        "types": "./dist/envoi/compose.d.cts",
+        "default": "./dist/envoi/compose.cjs"
+      }
+    },
+    "./envoi/port": {
+      "import": {
+        "types": "./dist/envoi/port.d.ts",
+        "default": "./dist/envoi/port.js"
+      },
+      "require": {
+        "types": "./dist/envoi/port.d.cts",
+        "default": "./dist/envoi/port.cjs"
+      }
+    },
+    "./envoi/redaction": {
+      "import": {
+        "types": "./dist/envoi/redaction.d.ts",
+        "default": "./dist/envoi/redaction.js"
+      },
+      "require": {
+        "types": "./dist/envoi/redaction.d.cts",
+        "default": "./dist/envoi/redaction.cjs"
+      }
+    },
+    "./envoi/registre": {
+      "import": {
+        "types": "./dist/envoi/registre.d.ts",
+        "default": "./dist/envoi/registre.js"
+      },
+      "require": {
+        "types": "./dist/envoi/registre.d.cts",
+        "default": "./dist/envoi/registre.cjs"
+      }
+    },
+    "./page": {
+      "import": {
+        "types": "./dist/page/routeur.d.ts",
+        "default": "./dist/page/routeur.js"
+      },
+      "require": {
+        "types": "./dist/page/routeur.d.cts",
+        "default": "./dist/page/routeur.cjs"
+      }
+    },
+    "./page/lien": {
+      "import": {
+        "types": "./dist/page/lien.d.ts",
+        "default": "./dist/page/lien.js"
+      },
+      "require": {
+        "types": "./dist/page/lien.d.cts",
+        "default": "./dist/page/lien.cjs"
+      }
+    },
+    "./page/port": {
+      "import": {
+        "types": "./dist/page/port.d.ts",
+        "default": "./dist/page/port.js"
+      },
+      "require": {
+        "types": "./dist/page/port.d.cts",
+        "default": "./dist/page/port.cjs"
+      }
+    },
+    "./page/montage": {
+      "import": {
+        "types": "./dist/page/montage.d.ts",
+        "default": "./dist/page/montage.js"
+      },
+      "require": {
+        "types": "./dist/page/montage.d.cts",
+        "default": "./dist/page/montage.cjs"
+      }
+    },
+    "./webhook": {
+      "import": {
+        "types": "./dist/webhook/gestionnaire.d.ts",
+        "default": "./dist/webhook/gestionnaire.js"
+      },
+      "require": {
+        "types": "./dist/webhook/gestionnaire.d.cts",
+        "default": "./dist/webhook/gestionnaire.cjs"
+      }
+    },
+    "./api": {
+      "import": {
+        "types": "./dist/api/routeur.d.ts",
+        "default": "./dist/api/routeur.js"
+      },
+      "require": {
+        "types": "./dist/api/routeur.d.cts",
+        "default": "./dist/api/routeur.cjs"
+      }
+    },
+    "./api/tableau": {
+      "import": {
+        "types": "./dist/api/tableau.d.ts",
+        "default": "./dist/api/tableau.js"
+      },
+      "require": {
+        "types": "./dist/api/tableau.d.cts",
+        "default": "./dist/api/tableau.cjs"
+      }
+    },
+    "./prisma": {
+      "import": {
+        "types": "./dist/prisma/adaptateur.d.ts",
+        "default": "./dist/prisma/adaptateur.js"
+      },
+      "require": {
+        "types": "./dist/prisma/adaptateur.d.cts",
+        "default": "./dist/prisma/adaptateur.cjs"
+      }
+    },
+    "./schema.prisma": "./prisma/schema.prisma",
+    "./package.json": "./package.json"
   },
   "files": [
-    "src",
+    "dist",
+    "prisma/schema.prisma",
     "README.md",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "LICENSE"
   ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
+    "build": "tsup",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "schema": "prisma validate --schema prisma/schema.prisma"
+    "schema": "prisma validate --schema prisma/schema.prisma",
+    "verifier": "npm run typecheck && npm run test && npm run build",
+    "prepublishOnly": "npm run verifier"
   },
   "keywords": [
     "abonnement",
@@ -49,10 +287,10 @@
     "xof"
   ],
   "license": "MIT",
-  "private": true,
   "devDependencies": {
     "@types/node": "^26.4.1",
     "prisma": "^6.19.3",
+    "tsup": "^8.5.1",
     "typescript": "^5.9.3",
     "vitest": "^3.2.7"
   }

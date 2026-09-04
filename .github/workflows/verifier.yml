@@ -35,3 +35,17 @@ jobs:
       - run: npm run schema
         env:
           DATABASE_URL: postgresql://ndank:ndank@localhost:5432/ndank
+
+      # La construction, et surtout l'épreuve d'installation qui suit.
+      #
+      # Un paquet peut compiler, passer tous ses tests, et rester
+      # inutilisable : un chemin d'export qui pointe à côté, un format que
+      # l'hôte ne sait pas charger, un fichier oublié dans `files`. Aucun de
+      # ces trois défauts ne se voit dans le dépôt — ils se voient chez celui
+      # qui installe, après publication.
+      - run: npm run build
+
+      # `npm pack` puis installation réelle dans un projet vide, en ESM et en
+      # CommonJS. C'est la seule vérification qui parle du paquet plutôt que
+      # de la source.
+      - run: node scripts/epreuve-paquet.mjs
