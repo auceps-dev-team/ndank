@@ -185,6 +185,9 @@ export function envoiCompose(
           cle: message.cle,
           parti: remise.parti,
           reference: remise.reference,
+          ...(remise.aRetirer && remise.aRetirer.length > 0
+            ? { aRetirer: remise.aRetirer }
+            : {}),
         });
 
         return remise.parti;

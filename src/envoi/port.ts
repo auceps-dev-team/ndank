@@ -42,6 +42,27 @@ export interface Remise {
    * tous les transporteurs.
    */
   reference: string | null;
+
+  /**
+   * Les poignées d'appareil que la passerelle déclare mortes.
+   *
+   * ─────────────────────────────────────────────────────────────────────
+   * SANS ELLES, UN ABONNÉ INJOIGNABLE PASSE POUR JOIGNABLE
+   *
+   * Une application désinstallée laisse son jeton dans la base. Le service de
+   * push répond alors `DeviceNotRegistered` — un refus par appareil, dans une
+   * réponse dont le statut HTTP reste 200.
+   *
+   * Deux conséquences, et la seconde est grave. On dépense un appel par
+   * relance et pour toujours ; surtout, `joignable("push", …)` continue de
+   * rendre `true` parce que la liste d'appareils n'est pas vide. Un abonné
+   * dont le seul appareil est mort semble donc joignable, et le palier se
+   * consomme sur un canal qui ne mène nulle part.
+   *
+   * Ndank ne touche pas à la base de l'hôte : il rapporte, et l'hôte retire.
+   * Le journal porte l'information jusqu'à lui.
+   */
+  aRetirer?: readonly string[];
 }
 
 /**
@@ -184,6 +205,8 @@ export interface FaitEnvoi {
   cle: string;
   parti: boolean;
   reference: string | null;
+  /** Les poignées d'appareil à retirer de la base. Voir `Remise.aRetirer`. */
+  aRetirer?: readonly string[];
   /** Ce qui a levé, quand quelque chose a levé. */
   cause?: unknown;
 }
