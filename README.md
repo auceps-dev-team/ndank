@@ -156,11 +156,24 @@ hôte qui installait Ndank ne le trouvait nulle part.
 Le schéma se copie dans votre projet et se migre avec votre propre historique ;
 Ndank ne livre pas de migrations, qui entreraient en conflit avec les vôtres.
 
-```
-cp node_modules/ndank/prisma/schema.prisma prisma/ndank.prisma
+**Recopiez ses modèles à la suite de votre `schema.prisma`** — un second
+fichier `.prisma` demanderait la préversion `prismaSchemaFolder`, que Prisma 6
+n'active pas par défaut. La consigne précédente disait le contraire et ne
+fonctionnait pas ; corrigé en 0.13.2, après une installation réelle dans
+Baobart.
+
+```sh
+# les dix modèles à ajouter à la suite des vôtres
+cat node_modules/ndank/prisma/schema.prisma
+
 cp .env.example .env      # puis remplir DATABASE_URL et vos clés
-npx prisma migrate dev
+npx prisma migrate dev --name ndank
 ```
+
+Les tables sont mappées en minuscules françaises — `abonne`, `abonnement`,
+`relance`, `versement`… — et cohabitent donc avec les vôtres sans les heurter.
+Le seul point de rencontre observé est l'enum `Cadence` : si vous en avez déjà
+un aux mêmes valeurs, partagez-le plutôt que d'en créer un second.
 
 Puis les ports sont déjà écrits — c'est tout ce que le niveau 2 vous épargne :
 
@@ -217,7 +230,10 @@ export const GRILLE = grille([
 ]);
 ```
 
-`grille()` lève **au démarrage** et rend *tous* les défauts d'un coup — corriger
+`grille()` rend un **tableau** d'offres, et non un objet à interroger : une
+offre se retrouve avec `offreDe(GRILLE, id)`.
+
+Elle lève **au démarrage** et rend *tous* les défauts d'un coup — corriger
 une grille en cinq redémarrages successifs est une façon de perdre un quart
 d'heure. L'hôte qui la tient en base lit ses lignes et les passe à la même
 fonction ; `portsPrisma(...).offres()` le fait pour lui.
@@ -672,7 +688,8 @@ retard.
 
 Il n'y a pas de colonne `etat` — l'état se **déduit**, c'est la première
 décision du cœur. Une requête filtre donc sur des dates, et
-`bornesDe(etat, maintenant)` traduit. La traduction vit dans Ndank et non dans
+`bornesDe(etat, maintenant)` traduit — depuis `ndank/api/tableau`, et non
+`ndank/api` qui porte le routeur. La traduction vit dans Ndank et non dans
 chaque implémentation du port : deux traductions du même état finiraient par
 diverger, et le tableau de bord annoncerait un chiffre que le moteur ne
 reconnaîtrait pas.
@@ -1159,33 +1176,76 @@ appartient à Ndank App.
 soit vide.**
 
 628 tests passent. Ils tournent tous contre des faux que j'ai écrits — et un
-faux ne dément jamais son auteur. Ce qui suit n'a donc jamais rencontré la
-réalité, et chaque ligne est un pari tant qu'elle n'est pas cochée.
+faux ne dément jamais son auteur. Chaque ligne non cochée est un pari.
 
-- [ ] **L'adaptateur Prisma contre un vrai PostgreSQL.** `ClientNdank` est une
-      interface structurelle, et les tests un `Map` en mémoire. Rien ne garantit
-      qu'une seule des requêtes s'exécute.
-- [ ] **Une migration.** `prisma/` ne contient que `schema.prisma` : il n'y a
-      aucune migration, et le schéma n'a jamais été appliqué à une base.
-- [ ] **Le filtre JSON de `signauxPrisma`.** `detail: { path: ["canal"] }`
-      suppose un comportement de Prisma sur PostgreSQL que je n'ai jamais vu
-      s'exécuter.
-- [ ] **`$transaction`.** Le piège du client transactionnel — écrire par le
-      client extérieur au lieu du `tx` — est documenté et corrigé contre un faux.
-      Un faux ne reproduit pas l'isolation d'une vraie transaction.
-- [ ] **`POST /projection`.** Jamais atteint un serveur, puisqu'il n'existe pas
-      encore.
+**Quatre l'ont été le 4 septembre 2026**, en installant `ndank` dans
+[Baobart](https://github.com/auceps-dev-team/Baobart) et en appliquant son
+schéma à un vrai PostgreSQL (Prisma 6.19.3, branche `Ndank-Baobart-Test`).
+
+- [x] **L'adaptateur Prisma contre un vrai PostgreSQL.** `ClientNdank` est une
+      interface structurelle, et les tests un `Map` en mémoire.
+      → `portsPrisma` construit, `offres()` relit la grille, `souscrire()` crée
+      puis refuse le doublon au second clic, `dossier.abonnement` retrouve la
+      ligne, `tableau.compter` compte. Un passage complet a couru :
+      `vus=1 relances=1 suspendus=0 clos=0 injoignables=0 echecs=0`.
+- [x] **Une migration.** `prisma/` ne contenait que `schema.prisma`.
+      → `prisma migrate dev --name ndank_import` génère et applique. Les dix
+      tables sont vérifiées dans `information_schema.tables`. Aucun ajustement
+      de forme n'a été nécessaire.
+- [x] **Le filtre JSON de `signauxPrisma`.** `detail: { path: ["canal"] }`
+      supposait un comportement de Prisma sur PostgreSQL jamais observé.
+      → deux événements écrits, la clause en rend exactement un. C'est ce dont
+      `bilan()` dépend pour distinguer une passerelle SMS morte d'échecs
+      dispersés — si elle avait rendu zéro en silence, l'alerte n'aurait jamais
+      sonné.
+- [x] **`$transaction`.** Le piège du client transactionnel était corrigé contre
+      un faux, qui ne reproduit pas l'isolation.
+      → `interventions.ensemble` est bien branché sur `prisma.$transaction`,
+      une levée à l'intérieur remonte à l'appelant, et le compte de `versement`
+      est identique avant et après. Le retour arrière est bien celui de
+      PostgreSQL.
+
+Restent quatre paris, dont deux entamés.
+
 - [ ] **Les quatre passerelles d'envoi.** Resend, Brevo, Twilio et Expo sont
-      écrites d'après leur documentation. Aucune n'a jamais été appelée.
+      écrites d'après leur documentation. **Partiellement levé** :
+      `champsManquants` et `verifierEnvoi` refusent bien une configuration
+      incomplète. Mais aucun `POST` réel n'a atteint `api.resend.com`,
+      `api.brevo.com`, `api.twilio.com` ni `exp.host` — donc rien ne dit que la
+      réponse a la forme que l'adaptateur suppose.
 - [ ] **Flutterwave et MTN.** Seul Paystack a tourné en bac à sable — et c'est
       lui qui a révélé les deux erreurs les plus coûteuses du dépôt.
+      **Partiellement levé** : les deux adaptateurs sont bien inscrits au
+      registre avec les champs qu'ils exigent, et refusent de démarrer sans.
+      Le comportement réel de `POST /transactions/initiate` et de
+      `POST /collection/v1_0/requesttopay` reste supposé.
 - [ ] **Les unités de Flutterwave.** On suppose des unités **majeures**, sans
       l'avoir vérifié. C'est exactement la forme de l'erreur de facteur 100
       déjà rencontrée sur Paystack, où `XOF 20.00` s'affichait pour 2 000 F.
+      Elle n'a été trouvée qu'en **regardant un vrai tableau de bord marchand**,
+      jamais en relisant le convertisseur. Lire du code ne prouve pas ce qui
+      part sur le fil.
+- [ ] **`POST /projection`.** Jamais atteint un serveur, puisque
+      [Ndank App](https://github.com/auceps-dev-team/Ndank-app) ne le sert pas
+      encore. Le client, lui, est importable et compose ses lots.
 
-Le dernier point mérite d'être lu deux fois : la même erreur a déjà été commise
-une fois, elle n'a été trouvée qu'en regardant un tableau de bord réel, et la
-supposition qui l'a produite est encore en place chez un second fournisseur.
+### Ce que l'installation a appris en plus
+
+Trois choses que la suite de tests ne pouvait pas dire, et qui ont été
+corrigées en 0.13.2 :
+
+- la consigne d'installation du schéma **ne fonctionnait pas**. Elle proposait
+  un second fichier `prisma/ndank.prisma`, ce qui demande la préversion
+  `prismaSchemaFolder` de Prisma 6 ;
+- `bornesDe` s'importe de `ndank/api/tableau`, pas de `ndank/api` — qui porte le
+  routeur. Le README le citait sans dire d'où ;
+- `grille()` rend un **tableau**, pas un objet à interroger. Le README ne le
+  disait pas, et il fallait le deviner.
+
+Et une qu'on ne peut pas corriger, seulement nommer : **Expo n'exige aucun
+identifiant**, donc `verifierEnvoi` n'a rien à comparer et ne signalera jamais
+un push mal branché. C'est le seul canal dont on ne peut pas dire au démarrage
+s'il est prêt.
 
 ## Éprouver contre les vrais fournisseurs
 

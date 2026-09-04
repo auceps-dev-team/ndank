@@ -66,6 +66,27 @@ export interface ConfigExpo {
   http?: Http;
 }
 
+/**
+ * Aucun. Et c'est un piège qu'il faut nommer.
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ * EXPO N'EXIGE PAS D'IDENTIFIANT, DONC `verifierEnvoi` NE PEUT RIEN DIRE
+ *
+ * Le service public d'Expo accepte les envois anonymes. Ce n'est pas un oubli
+ * de configuration ici : il n'y a rien à configurer.
+ *
+ * La conséquence, elle, mérite d'être écrite. `verifierEnvoi()` existe pour
+ * qu'un hôte ne démarre pas muet, et il travaille en comparant les champs
+ * fournis aux champs requis. Sur une liste vide, il n'a **rien à comparer** :
+ * une passerelle push mal branchée passera sa vérification sans un mot.
+ *
+ * Un hôte qui compte sur le push doit donc en envoyer un pour de vrai avant de
+ * croire qu'il fonctionne. C'est le seul canal du dépôt dont on ne peut pas
+ * dire au démarrage s'il est prêt.
+ *
+ * Constaté en installant Ndank dans Baobart, où `champsManquants("expo", {})`
+ * a rendu `[]` — ce qui est juste, et ce qui ne rassure pas.
+ */
 export const CHAMPS_EXPO: readonly string[] = [];
 
 export function expo(config: ConfigExpo = {}): TransporteurPush {

@@ -6,6 +6,49 @@ le reste.
 
 ---
 
+## 0.13.2
+
+Quatre paris levés, et trois consignes fausses corrigées — par une installation
+réelle dans Baobart, contre un vrai PostgreSQL.
+
+### Corrigé
+
+**La consigne d'installation du schéma ne fonctionnait pas.** Elle proposait de
+copier les modèles dans un second fichier `prisma/ndank.prisma`, ce qui demande
+la préversion `prismaSchemaFolder` que Prisma 6 n'active pas. Un hôte qui
+suivait le README à la lettre n'allait nulle part. Les modèles se recopient à la
+suite du `schema.prisma` existant.
+
+**`bornesDe` s'importe de `ndank/api/tableau`**, et non de `ndank/api` qui porte
+le routeur. Le README le citait sans dire d'où, donc il fallait deviner — et le
+nom le plus court est le mauvais.
+
+**`grille()` rend un tableau**, pas un objet à interroger. Une offre se retrouve
+avec `offreDe(GRILLE, id)`. Le README ne le disait pas.
+
+### Documenté
+
+**Expo n'exige aucun identifiant, donc `verifierEnvoi` ne peut rien dire.** Le
+service public d'Expo accepte les envois anonymes ; il n'y a rien à configurer,
+donc rien à vérifier. La conséquence méritait d'être écrite : une passerelle
+push mal branchée passe la vérification sans un mot, et c'est le seul canal du
+dépôt dont on ne peut pas dire au démarrage s'il est prêt.
+
+### Éprouvé
+
+Quatre cases de « ce qui n'est pas encore éprouvé » sont cochées : l'adaptateur
+Prisma, la migration, le filtre JSON de `signauxPrisma` et `$transaction`. Le
+détail et les preuves sont dans le README.
+
+Le filtre JSON est celui qui inquiétait le plus : `bilan()` en dépend pour
+distinguer une passerelle SMS morte d'échecs dispersés. S'il avait rendu zéro en
+silence, l'alerte n'aurait jamais sonné — et rien ne l'aurait signalé.
+
+Restent quatre paris, dont deux entamés : les passerelles d'envoi et les
+fournisseurs sont validés à la configuration, jamais sur le fil.
+
+---
+
 ## 0.13.1
 
 ### Ajouté
