@@ -11,6 +11,7 @@ import type {
 } from "../api/tableau";
 import type { DossierAbonnement } from "../dossier";
 import { grille, type Grille, type Offre } from "../offre";
+import type { FaitIntervention, Interventions } from "../intervention";
 import type { NouvelAbonnement, Souscriptions } from "../souscription";
 import type { ClientNdank, LigneAbonnement } from "./client";
 
@@ -54,6 +55,8 @@ export interface PortsPrisma {
   souscriptions: Souscriptions;
   /** La grille tarifaire telle qu'elle est en base. */
   offres(): Promise<Grille>;
+  /** Pour les gestes manuels du tableau de bord. */
+  interventions: Interventions;
 }
 
 /** `avant` est strict, `apres` est inclusif — comme dans `bornesDe`. */
@@ -605,5 +608,121 @@ export function portsPrisma(
     );
   }
 
-  return { lecture, ecriture, creances, dossier, tableau, souscriptions, offres };
+  const interventions: Interventions = {
+    /**
+     * Pose ou lève la suspension.
+     *
+     * `updateMany` avec `projetId` : l'identifiant vient d'un tableau de bord,
+     * donc du dehors, et `update` toucherait la ligne d'un autre projet aussi
+     * volontiers que la sienne.
+     */
+    async suspendre(abonnementId: string, quand: Date | null): Promise<void> {
+      await client.abonnement.updateMany({
+        where: { id: abonnementId, projetId },
+        data: { suspenduLe: quand },
+      });
+    },
+
+    /**
+     * Pose la résiliation.
+     *
+     * `resilieeLe: null` dans le filtre : la première résiliation fait foi.
+     * Sans cela, un second clic déplacerait la date — et l'on perdrait le
+     * moment où l'abonné a vraiment dit non.
+     */
+    async resilier(abonnementId: string, quand: Date): Promise<void> {
+      await client.abonnement.updateMany({
+        where: { id: abonnementId, projetId, resilieeLe: null },
+        data: { resilieeLe: quand },
+      });
+    },
+
+    /**
+     * Enregistre un versement constaté hors ligne.
+     *
+     * `upsert` sur `(fournisseur, identifiantFournisseur)` — la même unicité
+     * que pour les versements d'opérateur. La pièce justificative devient donc
+     * la clé d'idempotence, et le même reçu ne peut pas entrer deux fois.
+     *
+     * `compteLe` est posé tout de suite : un versement manuel n'attend aucun
+     * webhook, il est constaté au moment où on l'enregistre.
+     */
+    async versementManuel(v: {
+      abonnementId: string;
+      identifiant: string;
+      reference: string;
+      montant: number;
+      devise: string;
+      recuLe: Date;
+      moyen: string;
+      auteur: string;
+    }): Promise<void> {
+      await client.versement.upsert({
+        where: {
+          fournisseur_identifiantFournisseur: {
+            fournisseur: "manuel",
+            identifiantFournisseur: v.identifiant,
+          },
+        },
+        create: {
+          abonnementId: v.abonnementId,
+          fournisseur: "manuel",
+          identifiantFournisseur: v.identifiant,
+          reference: v.reference,
+          montant: v.montant,
+          devise: v.devise,
+          etat: "REUSSI",
+          regleLe: v.recuLe,
+          compteLe: new Date(),
+          brut: { manuel: true, moyen: v.moyen, auteur: v.auteur },
+        },
+        // La première écriture fait foi. Réécrire ferait bouger un montant déjà
+        // compté, sur une pièce que quelqu'un a peut-être déjà rapprochée.
+        update: {},
+      });
+    },
+
+    /**
+     * Consigne le geste.
+     *
+     * La clé porte l'horodatage exact, et non le cycle : deux suspensions
+     * successives dans le même cycle sont deux faits distincts, et l'unicité
+     * `(abonnementId, type, cle)` les écraserait l'un l'autre si la clé ne les
+     * distinguait pas.
+     *
+     * C'est l'inverse du journal du moteur, où la clé de cycle sert justement à
+     * n'en garder qu'un — parce que là, c'est le même fait redit trente fois.
+     */
+    async journaliser(fait: FaitIntervention): Promise<void> {
+      await client.evenement.upsert({
+        where: {
+          abonnementId_type_cle: {
+            abonnementId: fait.abonnementId,
+            type: `manuel.${fait.geste}`,
+            cle: fait.quand.toISOString(),
+          },
+        },
+        create: {
+          projetId,
+          abonnementId: fait.abonnementId,
+          type: `manuel.${fait.geste}`,
+          cle: fait.quand.toISOString(),
+          quandLe: fait.quand,
+          detail: { auteur: fait.auteur, ...fait.detail },
+        },
+        update: {},
+      });
+    },
+  };
+
+  return {
+    lecture,
+    ecriture,
+    creances,
+    dossier,
+    tableau,
+    souscriptions,
+    offres,
+    interventions,
+  };
 }

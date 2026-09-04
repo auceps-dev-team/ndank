@@ -287,6 +287,16 @@
         "default": "./dist/api/tableau.cjs"
       }
     },
+    "./api/gestes": {
+      "import": {
+        "types": "./dist/api/gestes.d.ts",
+        "default": "./dist/api/gestes.js"
+      },
+      "require": {
+        "types": "./dist/api/gestes.d.cts",
+        "default": "./dist/api/gestes.cjs"
+      }
+    },
     "./prisma": {
       "import": {
         "types": "./dist/prisma/adaptateur.d.ts",

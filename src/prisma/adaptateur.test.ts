@@ -255,7 +255,8 @@ function fauxClient(
       async updateMany() {
         return {};
       },
-      async upsert() {
+      async upsert(args) {
+        noter("versement", "upsert", args);
         return {};
       },
       async create() {
@@ -927,5 +928,98 @@ describe("les versements, pour le tableau de bord", () => {
       telephone: true,
     });
     expect(appel.args.include.abonne.select.appareils).toBeUndefined();
+  });
+});
+
+describe("les gestes manuels, contre le schéma", () => {
+  it("suspend et rétablit en cloisonnant par projet", async () => {
+    // L'identifiant vient d'un tableau de bord, donc du dehors : `update`
+    // toucherait la ligne d'un autre projet aussi volontiers que la sienne.
+    const f = fauxClient([ligne()]);
+    const p = portsPrisma(f.client, { projetId: PROJET });
+
+    await p.interventions.suspendre("ab-1", DEPART);
+    await p.interventions.suspendre("ab-1", null);
+
+    const appels = f.appels.filter(
+      (a) => a.table === "abonnement" && a.methode === "updateMany",
+    );
+
+    expect(appels[0]!.args.where.projetId).toBe(PROJET);
+    expect(appels[0]!.args.data.suspenduLe).toBe(DEPART);
+    expect(appels[1]!.args.data.suspenduLe).toBeNull();
+  });
+
+  it("ne déplace pas la date d'une résiliation déjà posée", async () => {
+    // Un second clic effacerait le moment où l'abonné a vraiment dit non.
+    const f = fauxClient([ligne()]);
+    const p = portsPrisma(f.client, { projetId: PROJET });
+
+    await p.interventions.resilier("ab-1", DEPART);
+
+    const appel = f.appels.find(
+      (a) => a.table === "abonnement" && a.methode === "updateMany",
+    )!;
+
+    expect(appel.args.where.resilieeLe).toBeNull();
+  });
+
+  it("fait de la pièce justificative la clé d'idempotence du versement", async () => {
+    // Même unicité que pour les versements d'opérateur : le même reçu ne peut
+    // pas entrer deux fois.
+    const f = fauxClient([ligne()]);
+    const p = portsPrisma(f.client, { projetId: PROJET });
+
+    await p.interventions.versementManuel({
+      abonnementId: "ab-1",
+      identifiant: "manuel:RECU-42",
+      reference: "20260209-1-ab-1",
+      montant: 2000,
+      devise: "XOF",
+      recuLe: DEPART,
+      moyen: "espèces",
+      auteur: "awa",
+    });
+
+    const appel = f.appels.find(
+      (a) => a.table === "versement" && a.methode === "upsert",
+    )!;
+
+    expect(appel.args.where.fournisseur_identifiantFournisseur).toEqual({
+      fournisseur: "manuel",
+      identifiantFournisseur: "manuel:RECU-42",
+    });
+    // Un versement manuel n'attend aucun webhook : il est compté tout de suite.
+    expect(appel.args.create.compteLe).toBeInstanceOf(Date);
+    // La première écriture fait foi.
+    expect(appel.args.update).toEqual({});
+  });
+
+  it("garde deux gestes successifs du même type, sans les écraser", async () => {
+    // L'inverse du journal du moteur, où la clé de cycle sert à n'en garder
+    // qu'un — parce que là, c'est le même fait redit trente fois. Deux
+    // suspensions dans un même cycle sont deux faits distincts.
+    const f = fauxClient([ligne()]);
+    const p = portsPrisma(f.client, { projetId: PROJET });
+
+    await p.interventions.journaliser({
+      abonnementId: "ab-1",
+      geste: "suspendre",
+      auteur: "awa",
+      quand: DEPART,
+    });
+    await p.interventions.journaliser({
+      abonnementId: "ab-1",
+      geste: "suspendre",
+      auteur: "moussa",
+      quand: ajouterJours(DEPART, 3),
+    });
+
+    const appels = f.appels.filter((a) => a.table === "evenement");
+    const cles = appels.map((a) => a.args.where.abonnementId_type_cle.cle);
+
+    expect(new Set(cles).size).toBe(2);
+    expect(appels[0]!.args.create.type).toBe("manuel.suspendre");
+    expect(appels[0]!.args.create.detail.auteur).toBe("awa");
   });
 });

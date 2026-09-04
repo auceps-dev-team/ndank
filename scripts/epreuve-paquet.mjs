@@ -85,6 +85,7 @@ const CHEMINS = [
   "ndank/webhook",
   "ndank/api",
   "ndank/api/tableau",
+  "ndank/api/gestes",
   "ndank/prisma",
 ];
 
