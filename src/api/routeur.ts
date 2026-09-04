@@ -54,6 +54,8 @@ import {
  */
 
 /** Combien de lignes une page peut rendre. */
+import { bilan, pire, type Constat, type Signaux } from "../sante";
+
 export const PAR_PAGE_MAX = 100;
 const PAR_PAGE_DEFAUT = 25;
 
@@ -77,6 +79,22 @@ export interface ReglagesApi {
    */
   battements?: Battements;
   sante?: ReglagesSante;
+  /**
+   * Les autres signaux de santé. Facultatif, et indépendant du battement.
+   *
+   * ═══════════════════════════════════════════════════════════════════════
+   * LE BATTEMENT NE DIT QUE « ÇA TOURNE »
+   *
+   * Un moteur qui tourne parfaitement peut passer ses journées à ne rien
+   * faire : la passerelle SMS refuse la clé depuis mardi, ou quarante abonnés
+   * ont payé sans que leur abonnement bouge. Rien de cela n'arrête le passage
+   * quotidien, et rien de cela n'apparaît dans `Sante`.
+   *
+   * Branché, `GET /sante` porte en plus `constats` — une phrase et un geste
+   * par chose à savoir. Non branché, la réponse garde exactement la forme
+   * qu'elle avait : un tableau de bord existant ne casse pas.
+   */
+  signaux?: Omit<Signaux, "battements">;
   /**
    * La grille tarifaire, quand l'hôte veut l'exposer. Facultatif.
    *
@@ -309,9 +327,21 @@ export function routeurApi(
 
       const etat = await sante(reglages.battements, reglages.sante, maintenant);
 
+      // `bilan` refait l'appel à `sante` pour son propre constat MOTEUR. Un
+      // appel de plus sur une route de diagnostic ne vaut pas de tordre l'une
+      // des deux fonctions pour que l'autre lui passe son résultat.
+      const constats: readonly Constat[] | undefined = reglages.signaux
+        ? await bilan(
+            { ...reglages.signaux, battements: reglages.battements },
+            reglages.sante,
+            maintenant,
+          )
+        : undefined;
+
       return rendre(
         json(200, {
           ...etat,
+          ...(constats ? { constats, pire: pire(constats) } : {}),
           // Une phrase et son action, pas un mot seul : « BLOQUE » n'aide
           // personne. C'est ce que l'écran affiche tel quel.
           ...direSante(etat),

@@ -127,6 +127,26 @@
         "default": "./dist/argent.cjs"
       }
     },
+    "./sante": {
+      "import": {
+        "types": "./dist/sante.d.ts",
+        "default": "./dist/sante.js"
+      },
+      "require": {
+        "types": "./dist/sante.d.cts",
+        "default": "./dist/sante.cjs"
+      }
+    },
+    "./prisma/sante": {
+      "import": {
+        "types": "./dist/prisma/sante.d.ts",
+        "default": "./dist/prisma/sante.js"
+      },
+      "require": {
+        "types": "./dist/prisma/sante.d.cts",
+        "default": "./dist/prisma/sante.cjs"
+      }
+    },
     "./identite": {
       "import": {
         "types": "./dist/identite.d.ts",

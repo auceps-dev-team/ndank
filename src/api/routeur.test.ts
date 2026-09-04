@@ -696,3 +696,102 @@ describe("l'argent, par l'API", () => {
     expect(resume["recurrentMensuel"]).toBeUndefined();
   });
 });
+
+describe("la santé élargie, par l'API", () => {
+  const battements = {
+    async commencer() {
+      return "p-1";
+    },
+    async terminer() {},
+    async echouer() {},
+    async dernier() {
+      return {
+        id: "p-1",
+        commenceLe: new Date(Date.now() - 2 * 3_600_000),
+        termineLe: new Date(Date.now() - 2 * 3_600_000),
+        vus: 12,
+        relances: 3,
+        suspendus: 0,
+        clos: 0,
+        injoignables: 0,
+        echecs: 0,
+        lotPlein: false,
+        erreur: null,
+      };
+    },
+  };
+
+  it("garde exactement sa forme quand rien n'est branché", async () => {
+    // Un tableau de bord existant ne doit pas casser parce qu'on a ajouté des
+    // constats ailleurs.
+    const f = fauxTableau([ligne()]);
+    const api = routeurApi({ tableau: f.tableau, jeton: JETON, battements });
+
+    const corps = lire((await api(get("/sante"))).corps);
+
+    expect(corps["va"]).toBe("BIEN");
+    expect(corps["constats"]).toBeUndefined();
+    expect(corps["pire"]).toBeUndefined();
+  });
+
+  it("porte les constats et le pire quand les signaux sont branchés", async () => {
+    const f = fauxTableau([ligne()]);
+    const api = routeurApi({
+      tableau: f.tableau,
+      jeton: JETON,
+      battements,
+      signaux: {
+        async paiementsNonComptes() {
+          return 3;
+        },
+      },
+    });
+
+    const corps = lire((await api(get("/sante"))).corps);
+    const constats = corps["constats"] as Record<string, string>[];
+
+    expect(corps["pire"]).toBe("ALERTE");
+    expect(constats[0]!["quoi"]).toBe("PAIEMENTS_NON_COMPTES");
+    expect(constats[0]!["quoiFaire"]).toMatch(/déjà versée/);
+  });
+
+  it("répond quand même si un signal est illisible", async () => {
+    // La route de diagnostic est la dernière qui doive tomber : si elle
+    // levait, le marchand perdrait avec elle les constats qui allaient bien.
+    const f = fauxTableau([ligne()]);
+    const api = routeurApi({
+      tableau: f.tableau,
+      jeton: JETON,
+      battements,
+      signaux: {
+        async signaturesRefusees(): Promise<number> {
+          throw new Error("boum");
+        },
+      },
+    });
+
+    const reponse = await api(get("/sante"));
+    const constats = lire(reponse.corps)["constats"] as Record<string, string>[];
+
+    expect(reponse.statut).toBe(200);
+    expect(constats.some((c) => c["quoi"] === "ILLISIBLE")).toBe(true);
+  });
+
+  it("répond toujours 501 sans battement, signaux ou pas", async () => {
+    // Les constats se lisent autour d'un battement ; sans lui, on ne sait même
+    // pas si les compteurs à zéro veulent dire « rien à faire » ou « rien ne
+    // tourne ».
+    const f = fauxTableau([ligne()]);
+    const api = routeurApi({
+      tableau: f.tableau,
+      jeton: JETON,
+      signaux: {
+        async injoignables() {
+          return 1;
+        },
+      },
+    });
+
+    expect((await api(get("/sante"))).statut).toBe(501);
+  });
+});
