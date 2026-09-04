@@ -43,9 +43,59 @@
 
 import { fournisseur } from "../dist/encaissement/registre.js";
 import { referenceDeVersement } from "../dist/encaissement/reconciliation.js";
+import { exposant, versFournisseur } from "../dist/devise.js";
 
 const CLE_PAYSTACK = process.env["PAYSTACK_CLE_SECRETE"] ?? "";
 const CLE_FLUTTERWAVE = process.env["FLUTTERWAVE_CLE_SECRETE"] ?? "";
+
+/**
+ * Ce que Flutterwave compte, et pourquoi le franc CFA ne peut pas le dire.
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ * UN ESSAI EN XOF NE PROUVE RIEN SUR LES UNITÉS
+ *
+ * On suppose que Flutterwave compte en unités **majeures** — la supposition
+ * exacte qui, chez Paystack, a produit un « XOF 20.00 » pour deux mille francs.
+ *
+ * `versFournisseur` calcule `decimalesFournisseur - exposant(devise)`. Pour
+ * Flutterwave, zéro décimale ; pour le XOF, zéro décimale. **L'écart est nul,
+ * donc la conversion est l'identité** : 2 000 part comme 2 000, que
+ * l'hypothèse soit juste ou fausse.
+ *
+ * Autrement dit, l'essai le plus naturel — un montant en francs CFA — est
+ * précisément celui qui ne peut pas répondre. Il faut une devise qui porte des
+ * décimales : le naira, le cedi, le shilling. En NGN, 200 000 mineures
+ * (2 000 ₦) partent comme 2 000 — et le tableau de bord marchand tranche.
+ *
+ * D'où le défaut à NGN, et l'avertissement plus bas quand on choisit une devise
+ * qui ne départage pas.
+ */
+const FW_DEVISE = process.env["FLUTTERWAVE_DEVISE"] ?? "NGN";
+const FW_MONTANT = Number.parseInt(
+  process.env["FLUTTERWAVE_MONTANT"] ?? "200000",
+  10,
+);
+
+/**
+ * Le numéro doit être du pays de la devise, et l'adaptateur le vérifie.
+ *
+ * Trouvé en posant NGN par défaut : « l'indicatif +225 paie en XOF,
+ * l'abonnement est en NGN ». C'est juste — Flutterwave n'accepte pas un
+ * mobile money ivoirien pour une charge en naira — mais cela veut dire que
+ * changer la devise sans changer le numéro donne une erreur qui parle de
+ * devise et non de numéro, et l'on cherche au mauvais endroit.
+ */
+const TELEPHONE_PAR_DEVISE = {
+  XOF: "+2250700000000",
+  NGN: "+2348000000000",
+  GHS: "+233200000000",
+  KES: "+254700000000",
+  UGX: "+256700000000",
+};
+
+const FW_TELEPHONE =
+  process.env["FLUTTERWAVE_TELEPHONE"] ?? TELEPHONE_PAR_DEVISE[FW_DEVISE] ?? null;
+
 
 let echecs = 0;
 let passes = 0;
@@ -261,13 +311,38 @@ async function flutterwave() {
   const unique = `essai${Date.now().toString(36)}`;
   const reference = referenceDeVersement(unique, new Date(), 0);
 
+  // Ce qui part réellement sur le fil, calculé avant l'appel pour qu'on puisse
+  // le comparer à ce que le tableau de bord marchand annonce.
+  const surLeFil = versFournisseur(FW_MONTANT, FW_DEVISE, 0);
+
+  console.log(`  · numéro d'essai : ${FW_TELEPHONE}`);
+  console.log(
+    `  · Ndank détient ${FW_MONTANT} ${FW_DEVISE} en unités mineures ; ` +
+      `envoyé sur le fil : ${surLeFil}`,
+  );
+
+  if (exposant(FW_DEVISE) === 0) {
+    console.log(
+      `  ⚠ ${FW_DEVISE} ne porte aucune décimale : la conversion est l'identité,`,
+    );
+    console.log("    et cet essai ne peut PAS départager majeures et mineures.");
+    console.log("    Relancez avec FLUTTERWAVE_DEVISE=NGN pour la case #8.");
+  } else {
+    console.log("  → à vérifier dans le tableau de bord Flutterwave :");
+    console.log(`    la transaction doit annoncer ${surLeFil} ${FW_DEVISE}.`);
+    console.log(
+      `    Si elle annonce ${surLeFil / 100} ou ${surLeFil * 100}, ` +
+        "l'hypothèse des unités majeures est fausse.",
+    );
+  }
+
   try {
     const invitation = await f.inviter({
       reference,
-      montant: 2000,
-      devise: "XOF",
+      montant: FW_MONTANT,
+      devise: FW_DEVISE,
       libelle: "Essai Ndank",
-      abonne: { ...ABONNE, telephone: "+2250700000000" },
+      abonne: { ...ABONNE, telephone: FW_TELEPHONE },
       retour: "https://p.ndank.test/v/retour",
     });
 

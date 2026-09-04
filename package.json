@@ -1,6 +1,6 @@
 {
   "name": "ndank",
-  "version": "0.13.2",
+  "version": "0.13.3",
   "description": "Abonnements par mobile money, sans carte bancaire.",
   "type": "module",
   "main": "./dist/moteur.cjs",

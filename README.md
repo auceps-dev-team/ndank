@@ -1225,6 +1225,15 @@ Restent quatre paris, dont deux entamés.
       Elle n'a été trouvée qu'en **regardant un vrai tableau de bord marchand**,
       jamais en relisant le convertisseur. Lire du code ne prouve pas ce qui
       part sur le fil.
+
+      **Et l'essai le plus naturel ne peut pas y répondre.** `versFournisseur`
+      calcule `decimalesFournisseur - exposant(devise)` : pour Flutterwave zéro
+      décimale, pour le franc CFA zéro décimale, donc l'écart est nul et la
+      conversion est l'**identité**. Un paiement en XOF part comme 2 000 que
+      l'hypothèse soit juste ou fausse. Il faut une devise à décimales — en NGN,
+      200 000 mineures partent comme 2 000, et le tableau de bord tranche.
+      `npm run bac-a-sable` prend donc NGN par défaut et prévient quand on lui
+      donne une devise qui ne départage pas.
 - [ ] **`POST /projection`.** Jamais atteint un serveur, puisque
       [Ndank App](https://github.com/auceps-dev-team/Ndank-app) ne le sert pas
       encore. Le client, lui, est importable et compose ses lots.

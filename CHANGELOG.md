@@ -6,6 +6,32 @@ le reste.
 
 ---
 
+## 0.13.3
+
+### Corrigé
+
+**Le bac à sable ne pouvait pas répondre à la case qu'il servait.** L'essai
+Flutterwave envoyait `2000 XOF` en dur — et c'est précisément le cas où la
+conversion ne prouve rien.
+
+`versFournisseur` calcule `decimalesFournisseur - exposant(devise)`. Pour
+Flutterwave, zéro décimale ; pour le franc CFA, zéro décimale. L'écart est nul,
+donc 2 000 part comme 2 000, que l'hypothèse des unités majeures soit juste ou
+fausse. On aurait pu ouvrir un compte sandbox, lancer l'épreuve, la voir passer,
+et n'avoir rien appris.
+
+Le script prend désormais `FLUTTERWAVE_DEVISE=NGN` par défaut — une devise à
+décimales, où 200 000 mineures partent comme 2 000 — affiche ce qui va sur le
+fil, et **prévient** quand on lui donne une devise qui ne départage pas.
+
+**Le numéro suit la devise.** En passant à NGN, l'adaptateur a refusé :
+« l'indicatif +225 paie en XOF, l'abonnement est en NGN ». C'est juste, mais
+l'erreur parle de devise quand le problème est le numéro, et l'on cherche au
+mauvais endroit. Une table indicatif ↔ devise l'accorde, et
+`FLUTTERWAVE_TELEPHONE` la contourne.
+
+---
+
 ## 0.13.2
 
 Quatre paris levés, et trois consignes fausses corrigées — par une installation
