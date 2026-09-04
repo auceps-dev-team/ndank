@@ -6,6 +6,126 @@ le reste.
 
 ---
 
+## 0.13.0
+
+Les neuf promesses des maquettes, et l'état de santé qui va au-delà du
+battement.
+
+### Ajouté
+
+**`ndank/argent`** — `parMois`, `recurrentMensuel`, `evolution`. Il ne mélange
+jamais deux devises et arrondit une fois par groupe : additionner des XOF et des
+NGN donne un nombre qui ne veut rien dire, et arrondir à chaque ligne fait
+dériver un total de plusieurs unités sur cinq cents abonnés.
+
+**`ndank/relances`** — `coutDesRelances` répond à « combien m'a coûté l'échelle
+ce mois-ci », et `statistiques` mesure le délai d'un abonné contre **l'échéance
+visée**, lue dans la référence, et non contre son paiement précédent. Un abonné
+qui paie deux jours en retard tous les mois a un délai constant, pas croissant.
+
+**Le checkout public** — `lienOffre` produit une adresse qu'on met sur un site,
+et `/o/<jeton>` vend une offre en trois champs. Rien n'est stocké entre la
+demande de paiement et le retour : l'offre et l'abonné voyagent dans la
+référence, donc pas de table d'attente, pas de purge à écrire, et pas de réponse
+à trouver à « que fait-on des lignes que personne n'est venu chercher ».
+
+Le courriel est obligatoire : c'est le barreau gratuit de l'échelle, et sans lui
+chaque relance de cet abonné coûte un SMS.
+
+**`ndank/projection`** — la seule question qui ne se répond pas chez l'hôte.
+« Voir tous mes abonnements » ne peut pas se traiter chez le marchand : un
+abonné chez trois hôtes est trois lignes dans trois bases que rien ne rapproche.
+Chaque hôte pousse donc de quoi afficher une carte ; l'argent, les versements,
+les webhooks et les coordonnées complètes ne bougent pas.
+
+On envoie des **dates**, jamais un état. `etatDe` reste la seule autorité, et
+Ndank App l'applique aux dates reçues — sinon un abonné lirait « à jour » chez
+lui et « suspendu » chez le marchand, selon la fraîcheur de la dernière poussée.
+
+**`ndank/identite`** — `normaliserIdentifiant` et `empreinte`.
+
+L'empreinte **n'est pas de l'anonymisation**, et le fichier le dit sans détour :
+un numéro vit dans un espace minuscule, et quiconque tient le poivre en dresse
+la table. Ce qu'elle fait, c'est qu'une copie de la base de Ndank App prise sans
+le poivre ne livre pas un annuaire. Ndank App détient donc bien des données
+personnelles, et l'empreinte ne l'en dispense pas.
+
+**`ndank/code`** — le code à six chiffres du SMS de connexion. Dérivé de
+`HMAC(secret, identifiant + fenêtre)` plutôt que tiré au sort et rangé quelque
+part : pas de table, pas de purge, pas de code oublié en base six mois plus
+tard. C'est RFC 4226 avec une fenêtre de temps à la place du compteur.
+
+Il ne fait **pas** d'authentification — la session, le cookie et l'écran sont à
+Ndank App. Six chiffres font un million de possibilités, ce qui se parcourt en
+quelques secondes : le code ne protège rien par lui-même, c'est le nombre
+d'essais qui protège. `Tentatives` n'est donc pas optionnel et `verificateur()`
+refuse de se construire sans lui.
+
+**`ndank/sante`** et **`ndank/prisma/sante`** — l'état de santé élargi.
+
+Le battement répond à « est-ce que le moteur tourne ». Mais un moteur qui tourne
+parfaitement peut passer ses journées à ne rien faire : la passerelle SMS refuse
+la clé depuis mardi, les webhooks arrivent avec une signature qu'on rejette
+depuis le dernier déploiement, quarante abonnés ont payé sans que leur
+abonnement bouge. Rien de cela n'arrête le passage quotidien.
+
+Chaque constat porte son geste, même règle que `direSante` : « 12 échecs
+d'envoi » n'aide personne, « 12 relances sur 130 n'ont pas pu partir » se
+comprend. `GET /sante` porte `constats` et `pire` quand les signaux sont
+branchés, et garde exactement sa forme quand ils ne le sont pas.
+
+**Quatre gestes d'écriture** — « Relancer maintenant », « Marquer payé »,
+« Suspendre l'accès », « Résilier », sur `ndank/api/gestes` et un jeton à part.
+
+**L'opérateur habituel**, les **statistiques par abonné**, et la **répartition
+par fournisseur**.
+
+### Deux arbitrages qui valaient d'être écrits
+
+**Ce qu'on ne sait pas lire est un constat, pas un zéro.** Si la requête qui
+compte les envois ratés échoue, rendre zéro ferait afficher « tout va bien » sur
+la foi d'une question qu'on n'a pas pu poser. `bilan()` ne lève jamais et isole
+chaque signal : ce qui échoue devient `ILLISIBLE`, le reste est rendu.
+
+**« Tentés » ne vient pas du journal.** Le journal ne garde pas les envois
+réussis, sauf si l'hôte le demande — donc `tentes === echoues` partout, et le
+bilan aurait annoncé chaque jour que toutes les passerelles sont mortes. Une
+alerte qui se déclenche toujours ne se lit plus au bout d'une semaine. Les
+partis se comptent dans `Relance.canaux`, qui est écrit quoi qu'il arrive.
+
+### Corrigé
+
+**Deux écritures d'un même numéro ne donnaient pas la même identité.**
+« 07 00 00 00 00 » et « +2250700000000 » produisaient deux empreintes. Deux
+hôtes qui rangent le numéro autrement auraient donc donné deux identités à la
+même personne, et la vue multi-sites — dont c'est toute la raison d'être —
+n'aurait affiché qu'une carte sur deux. Sans erreur, sans trace, sans que
+personne ne sache quoi chercher.
+
+`normaliserIdentifiant` **lève** sur un numéro qui n'est pas en E.164 plutôt
+que d'en fabriquer un second. On ne peut pas deviner l'indicatif manquant —
+« +225 » a l'air raisonnable jusqu'au premier abonné sénégalais — mais l'hôte
+sait le sien, et il a déjà `enE164`.
+
+Trouvé par un test, en écrivant le code SMS.
+
+**`referenceDeSouscription` était ambiguë.** Une offre `pass-pro` et un abonné
+`usr-1` donnaient `S-pass-pro-usr-1-3`, qui se relit de quatre façons. Tout est
+désormais encodé en hexadécimal.
+
+**`lienOffre` produisait `base/JETON` au lieu de `base/o/JETON`.** Corrigé dans
+`lienOffre` plutôt que dans la documentation : un hôte ne doit pas pouvoir
+oublier le segment.
+
+### Ce qui n'a pas été fait, et pourquoi
+
+**L'authentification.** Ndank livre le code SMS, pas la connexion. Une
+bibliothèque qu'on installe chez un marchand n'a ni compte, ni session, ni
+écran — et lui en donner ferait porter au SDK une responsabilité qui appartient
+à Ndank App.
+
+---
+
 ## 0.12.0
 
 Cinq journaux qui n'écrivaient nulle part, et une table morte depuis six

@@ -946,6 +946,183 @@ const { texte, perdus } = replierAvecPertes(nom);
 if (perdus.length > 0) { /* replier sur autre chose que le nom */ }
 ```
 
+## Ce que le battement ne dit pas
+
+Le battement répond à une question, la plus importante : **est-ce que le moteur
+tourne encore**. Il n'en répond aucune autre.
+
+Or un moteur qui tourne parfaitement peut passer ses journées à ne rien faire.
+La passerelle SMS refuse la clé depuis mardi. Les webhooks arrivent avec une
+signature qu'on rejette depuis le dernier déploiement. Quarante abonnés ont payé
+et leur abonnement n'a pas bougé. Rien de tout cela n'arrête le passage
+quotidien, rien de tout cela n'apparaît dans `Sante` — et tout cela se voit dans
+des compteurs que personne ne regarde.
+
+```ts
+import { bilan, pire } from "ndank/sante";
+import { signauxPrisma } from "ndank/prisma/sante";
+
+const signaux = signauxPrisma(prisma, ports.battements, { projetId });
+const constats = await bilan(signaux);
+
+for (const c of constats) {
+  console.log(`[${c.gravite}] ${c.titre}`);
+  console.log(`          ${c.quoiFaire}`);
+}
+```
+
+```
+[ALERTE]  Aucun SMS n'est parti : 30 tentatives, 30 échecs.
+          La passerelle SMS refuse tout. Vérifiez la clé, le solde du compte et
+          l'expéditeur déclaré — ce n'est pas un incident réseau, c'est une
+          configuration.
+[ALERTE]  1 paiement a réussi sans prolonger l'abonnement.
+          L'argent est arrivé et le service n'a pas suivi : ces abonnés vont
+          être relancés pour une somme qu'ils ont déjà versée.
+[ATTENTION] 2 abonnés à relancer n'ont aucun moyen d'être joints.
+          Ni adresse, ni numéro, ni appareil. Ils arriveront à échéance sans
+          avoir été prévenus une seule fois.
+[RIEN]    Dernier passage il y a 1 h.
+          Rien à faire.
+```
+
+Branché sur `routeurApi`, `GET /sante` porte en plus `constats` et `pire` :
+
+```ts
+routeurApi({ tableau, jeton, battements, signaux });
+```
+
+Sans `signaux`, la réponse garde exactement la forme qu'elle avait — un tableau
+de bord existant ne casse pas.
+
+### Chaque constat porte son geste
+
+Même règle que `direSante`, et pour la même raison : un marchand qui lit des
+compteurs pour décider fait notre travail. « 12 échecs d'envoi » n'aide
+personne ; « 12 relances sur 130 n'ont pas pu partir » se comprend, et la phrase
+qui suit dit quoi en faire.
+
+Quatre gravités et non trois : `ALERTE` et `ATTENTION` ne demandent pas la même
+chose. Une passerelle qui refuse toutes les clés se règle aujourd'hui ; douze
+abonnés sans adresse se règlent un jour ou l'autre. Les mettre au même rang
+ferait que ni l'un ni l'autre ne serait traité.
+
+### Ce qu'on ne sait pas lire est un constat, pas un zéro
+
+C'est le point qui vaut d'être écrit, parce que l'erreur inverse est naturelle.
+Si la requête qui compte les envois ratés échoue, on est tenté de rendre zéro et
+de passer à la suite — et le tableau de bord affiche « tout va bien » sur la foi
+d'une question qu'on n'a pas pu poser.
+
+`bilan()` ne lève donc **jamais**, et isole chaque signal. Ce qui échoue devient
+un constat `ILLISIBLE` ; le reste est rendu quand même. Dire « on ne sait pas »
+vaut mieux que dire « rien », parce que « rien » se croit.
+
+De la même façon, un signal qu'on ne branche pas ne produit **aucun** constat —
+et surtout pas un constat rassurant. Un hôte du niveau 1 n'a ni journal, ni
+webhooks, ni table de versements ; lui annoncer « 0 paiement non compté » lui
+ferait croire qu'on a vérifié.
+
+### « Tentés » ne vient pas du journal
+
+Le chemin évident donne ici un résultat faux, et il vaut d'être signalé à qui
+écrira ses propres signaux.
+
+Le journal ne conserve pas les envois réussis, sauf si l'hôte a demandé
+`envoisReussis: true` — c'est délibéré, un envoi qui part n'a rien à raconter.
+En tirer les tentatives donnerait `tentes === echoues` pour tous les canaux, et
+`bilan()` annoncerait chaque jour que toutes les passerelles sont mortes. Une
+alerte qui se déclenche toujours ne se lit plus au bout d'une semaine.
+
+Les envois partis se comptent donc dans `Relance.canaux`, qui porte « les canaux
+par lesquels elle est effectivement partie » et qui est écrit quoi qu'il arrive.
+
+## Voir tous ses abonnements, d'un site à l'autre
+
+C'est la seule question de ce dépôt qui ne puisse pas se répondre chez le
+marchand. Un abonné chez trois hôtes est trois lignes, dans trois bases, que
+rien ne rapproche — et aucun des trois hôtes ne connaît les deux autres.
+
+```ts
+import { projectionDe, pousser } from "ndank/projection";
+
+const lignes = abonnements
+  .map((a) => projectionDe(a, { site: "Baobart", poivre, lien }))
+  .filter((l) => l !== null);
+
+await pousser(lignes, { base, jeton, poivre, site: "Baobart" });
+```
+
+Ce qui reste chez l'hôte : l'argent, les versements, les webhooks, les
+coordonnées complètes. Ce qui part : de quoi afficher une carte.
+
+**On envoie des dates, jamais un état.** `etatDe` est la seule autorité sur ce
+qu'est un abonnement suspendu, et Ndank App l'applique aux dates reçues. Envoyer
+un état calculé chez l'hôte ferait qu'un abonné lirait « à jour » chez lui et
+« suspendu » chez le marchand, selon la fraîcheur de la dernière poussée.
+
+Un lot qui échoue n'emporte pas les autres, même règle que le passage quotidien
+et pour la même raison : la poussée suivante rattrapera.
+
+### L'empreinte n'est pas de l'anonymisation
+
+Il faut le dire sans détour, parce que le contraire se croit facilement.
+
+Un numéro de téléphone vit dans un espace minuscule — quelques milliards de
+valeurs — et quiconque tient le poivre peut en dresser la table complète en
+quelques heures. Une empreinte de numéro se retrouve, toujours. Et le poivre est
+**partagé** entre Ndank App et tous les hôtes : il le faut, puisque l'hôte doit
+calculer l'empreinte pour la pousser et Ndank App doit la recalculer quand
+l'abonné se connecte. Il fuit donc avec n'importe lequel d'entre eux.
+
+Ce qu'elle fait quand même, et qui n'est pas rien : une copie de la base de Ndank
+App, prise sans le poivre, ne livre pas un annuaire.
+
+**Ndank App détient donc des données personnelles** pour le compte de plusieurs
+marchands, et l'empreinte ne l'en dispense pas. Elle réduit l'exposition
+accidentelle, pas l'attaque décidée.
+
+### Les numéros doivent être en E.164, et Ndank refuse le reste
+
+`normaliserIdentifiant` lève sur un numéro qui ne commence pas par `+`.
+
+C'est délibéré, et c'est la panne qu'on ne voit jamais autrement : un hôte qui
+range « 0700000000 » et un autre « +2250700000000 » donneraient deux identités à
+la même personne, et la vue multi-sites n'afficherait qu'une carte sur deux —
+sans erreur, sans trace, sans que personne ne sache quoi chercher.
+
+Et l'on ne peut pas deviner l'indicatif manquant : `+225` est une hypothèse qui a
+l'air raisonnable jusqu'au premier abonné sénégalais. L'hôte, lui, sait le sien,
+et il a déjà `enE164`.
+
+## Le code SMS
+
+```ts
+import { engendrer, verificateur } from "ndank/code";
+
+const code = engendrer(secret, "+2250700000000");
+// → « 481207 », à envoyer par SMS
+
+const verifier = verificateur({ secret, tentatives });
+await verifier("+2250700000000", saisi);
+// → { issue: "OUVERT" } | { issue: "REFUSE", restants } | { issue: "BLOQUE" }
+```
+
+Le code se dérive de `HMAC(secret, identifiant + fenêtre)` plutôt que de se tirer
+au sort et de se ranger quelque part : pas de table à écrire, pas de purge à
+programmer, pas de code oublié en base six mois plus tard. C'est la construction
+de la RFC 4226, avec une fenêtre de temps à la place du compteur. Il vaut entre
+cinq et dix minutes — la vérification accepte aussi la fenêtre précédente, sans
+quoi un code émis à la fin d'une fenêtre serait mort avant que le SMS n'arrive.
+
+**Six chiffres font un million de possibilités, ce qui se parcourt en quelques
+secondes.** Le code ne protège donc rien par lui-même ; ce qui protège, c'est le
+nombre d'essais. `Tentatives` n'est pas optionnel et `verificateur()` refuse de
+se construire sans lui : un port qu'on peut omettre finit par être omis, et l'on
+découvre le jour de l'incident que la fonction qu'on croyait sûre ne l'était que
+dans les exemples.
+
+
 ## Ce que Ndank ne fait pas
 
 **L'argent ne passe jamais par lui.** Il sait demander un paiement à un
@@ -963,12 +1140,18 @@ tient pas.
 est pur — c'est ce qui permet d'éprouver « un passage qui a raté trois jours
 n'envoie qu'une relance » sans rien monter, en une milliseconde.
 
-**Il ne relie pas un abonné d'un site à l'autre.** Chaque hôte a sa propre base,
-et sa table `abonne` est indexée par `(projetId, reference)`. Il n'existe aucune
-identité qui traverse deux hôtes : « Awa chez l'un » et « Awa chez l'autre » sont
-deux lignes que rien ne rapproche, et Ndank ne voit jamais les deux. Un abonné ne
-peut donc pas voir, en un endroit, tous les services auxquels il est abonné.
-C'est l'objet de la couche de projection — décidée, pas encore écrite.
+**Il ne relie pas un abonné d'un site à l'autre — tout seul.** Chaque hôte a sa
+propre base, et sa table `abonne` est indexée par `(projetId, reference)`. Il
+n'existe aucune identité qui traverse deux hôtes : « Awa chez l'un » et « Awa
+chez l'autre » sont deux lignes que rien ne rapproche. C'est l'objet de la
+couche de projection, et c'est le seul endroit où Ndank sort de chez le
+marchand — voir plus haut.
+
+**Il n'authentifie personne.** `ndank/code` engendre et vérifie le code à six
+chiffres qu'on envoie par SMS ; il n'y a ni session, ni cookie, ni compte, ni
+écran de connexion. Une bibliothèque qu'on installe chez un marchand n'a rien
+de tout cela, et lui en donner ferait porter au SDK une responsabilité qui
+appartient à Ndank App.
 
 ## Éprouver contre les vrais fournisseurs
 
