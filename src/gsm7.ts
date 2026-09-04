@@ -61,6 +61,28 @@ const DANS_BASE = new Set(BASE.split(""));
 const DANS_ETENDUS = new Set(ETENDUS.split(""));
 
 /**
+ * Toutes les espaces d'Unicode, ramenées à celle que l'alphabet connaît.
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ * UNE RÈGLE PLUTÔT QU'UNE LISTE, PARCE QU'UNE LISTE OUBLIE
+ *
+ * Quatre d'entre elles figuraient dans la table des replis, choisies parce
+ * qu'on les avait rencontrées. Les six autres — U+1680, U+2000 à U+200A, U+205F,
+ * U+3000 — n'y étaient pas, donc elles disparaissaient du message ET étaient
+ * comptées comme des pertes.
+ *
+ * Ce n'est pas un cas d'école : un libellé d'offre est une chaîne que quelqu'un
+ * a saisie, souvent collée depuis un traitement de texte, et un traitement de
+ * texte met des espaces typographiques partout. Le résultat était un SMS aux
+ * mots recollés — « PassCréateur » — et une liste de pertes qui criait au loup
+ * à chaque relance, si bien qu'une vraie perte n'aurait plus été vue.
+ *
+ * Le motif n'est PAS global : un `RegExp` global garde son `lastIndex` entre
+ * deux appels de `test`, et rendrait faux un caractère sur deux.
+ */
+const ESPACES = /[\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]/;
+
+/**
  * Ce par quoi remplacer ce que l'alphabet ne connaît pas.
  *
  * Un repli est une perte assumée : « â » devient « a ». C'est moins bien
@@ -68,12 +90,11 @@ const DANS_ETENDUS = new Set(ETENDUS.split(""));
  * points d'interrogation par une passerelle.
  */
 const REPLIS: Record<string, string> = {
-  // Les espaces qui n'en ont pas l'air. La fine insécable de `formatMoney` est
-  // la plus coûteuse de toutes : elle est dans chaque relance.
-  "\u00a0": " ",
-  "\u202f": " ",
-  "\u2009": " ",
-  "\u2007": " ",
+  // Les espaces qui n'en ont pas l'air ne sont plus ici : elles sont toutes
+  // traitées par `ESPACES`, plus bas. Les quatre qu'on écrivait à la main
+  // laissaient passer les six autres, dont U+2000 et U+3000 — qu'un
+  // copier-coller depuis un traitement de texte apporte dans un libellé
+  // d'offre aussi sûrement que `formatMoney` apporte la fine insécable.
 
   // La ponctuation soignée de Baobart.
   "’": "'",
@@ -143,6 +164,13 @@ export function replierAvecPertes(texte: string): Repli {
   for (const c of texte) {
     if (DANS_BASE.has(c) || DANS_ETENDUS.has(c)) {
       sortie += c;
+      continue;
+    }
+
+    // Avant la table : une espace exotique n'a pas à figurer dans une liste
+    // de replis pour être une espace.
+    if (ESPACES.test(c)) {
+      sortie += " ";
       continue;
     }
 

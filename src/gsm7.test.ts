@@ -23,6 +23,28 @@ describe("ce qui fait basculer un message en UCS-2", () => {
     expect(tientEnGsm7(replier(montant))).toBe(true);
   });
 
+  it("toutes les autres espaces d'Unicode, et pas seulement les quatre connues", () => {
+    // Quatre d'entre elles figuraient dans la table des replis, choisies parce
+    // qu'on les avait rencontrées. Les six autres disparaissaient du message ET
+    // étaient comptées comme des pertes : les mots se recollaient, et la liste
+    // des pertes criait au loup à chaque relance — si bien qu'une vraie perte
+    // n'aurait plus été vue.
+    //
+    // Un libellé d'offre est une chaîne que quelqu'un a saisie, souvent collée
+    // depuis un traitement de texte. Un traitement de texte met des espaces
+    // typographiques partout.
+    const exotiques = [0x00a0, 0x1680, 0x2000, 0x2003, 0x2009, 0x200a, 0x202f, 0x205f, 0x3000];
+
+    for (const point of exotiques) {
+      const texte = `Pass${String.fromCharCode(point)}Pro`;
+      const repli = replierAvecPertes(texte);
+
+      expect(repli.texte).toBe("Pass Pro");
+      expect(repli.perdus).toEqual([]);
+      expect(tientEnGsm7(repli.texte)).toBe(true);
+    }
+  });
+
   it("l'apostrophe courbe, qu'on écrit partout ailleurs dans Baobart", () => {
     expect(tientEnGsm7("l’accès")).toBe(false);
     expect(replier("l’accès")).toBe("l'accès");
