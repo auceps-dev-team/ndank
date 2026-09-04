@@ -6,6 +6,74 @@ le reste.
 
 ---
 
+## 0.9.0
+
+Une erreur d'un facteur cent, trouvée en regardant un tableau de bord.
+
+### Corrigé
+
+**Paystack compte en centièmes, même pour le franc CFA.** Relevé en mode test :
+
+```
+envoyé « amount: 2000 »    → affiché « XOF 20.00 »
+envoyé « amount: 200000 »  → affiché « XOF 2,000.00 »
+```
+
+Ndank affirmait partout que le franc CFA n'a pas de subdivision, donc que deux
+mille francs se transmettent `2000`. La première moitié est vraie — l'ISO 4217
+donne bien zéro décimale au XOF. La seconde était fausse.
+
+**Un abonnement à 2 000 F était prélevé vingt francs.** Personne ne s'en serait
+plaint : c'est une erreur qui va dans le sens de l'abonné. Le marchand l'aurait
+découverte sur son relevé, un mois plus tard.
+
+Pourquoi elle était restée invisible : pour le naira et le cedi, la convention
+de Paystack coïncide avec la norme — kobo, pesewas. L'écart n'apparaît que sur
+les devises à zéro décimale, c'est-à-dire exactement celles de la zone que
+Ndank sert.
+
+### Ajouté
+
+**`ndank/devise`** porte la table ISO 4217 et les deux conversions. L'unité
+interne reste la norme — `2000` en XOF vaut deux mille francs, `2000` en GHS
+vaut vingt cedis — et **chaque adaptateur convertit**, au même titre qu'il
+traduit les statuts. Une erreur chez l'un ne contamine pas les autres, et la
+règle se lit là où elle s'applique.
+
+L'arithmétique reste entière dans les deux sens : un flottant sur de l'argent
+réel est la seule erreur qu'on ne rattrape jamais. Une division qui ne tombe
+pas juste arrondit **au supérieur**, pour ne pas encaisser moins que le prix
+affiché.
+
+`formater()` écrit un montant pour un humain, avec le bon nombre de décimales
+— parce que trois couches en avaient besoin et que chacune l'aurait écrit à sa
+façon.
+
+**Le refus de devise est reformulé.** `Currency not supported by merchant` ne
+dit pas qu'il parle du compte marchand, et on cherche donc du côté de la
+requête. L'adaptateur nomme la vraie cause.
+
+### Ce qui reste non vérifié
+
+**La convention de Flutterwave n'a pas été mesurée**, faute de clé. `0` traduit
+la lecture qu'on a de sa documentation — des unités majeures, l'inverse de
+Paystack. Le fichier le dit en toutes lettres.
+
+Ce doute ne peut pas mordre le marché principal : pour le franc CFA, les deux
+lectures coïncident, donc la conversion est l'identité. Il ne concerne que les
+devises à deux décimales chez un hôte Flutterwave — et s'il se révélait faux,
+il **sous-facturerait**. C'est le sens dans lequel on préfère se tromper. Le
+bac à sable le vérifie dès qu'une clé est posée.
+
+### Documenté
+
+**La devise est celle du compte, pas celle de la requête.** Un compte marchand
+n'active que les devises de son marché : sur un compte XOF, Paystack refuse
+`NGN`, `GHS`, `KES`, `ZAR` et `USD`. Écrire `GHS` dans sa grille avec un compte
+sénégalais ne produit pas une conversion, mais un refus — au premier abonné qui
+clique.
+
+---
 ## 0.8.1
 
 Le bac à sable a tourné pour la première fois contre un vrai compte Paystack.

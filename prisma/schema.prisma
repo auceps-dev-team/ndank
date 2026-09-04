@@ -42,12 +42,18 @@
 // ════════════════════════════════════════════════════════════════════════════
 // L'ARGENT EST EN ENTIERS, EN UNITÉS MINEURES
 //
-// `Int`, jamais `Float`, jamais `Decimal`. Deux mille francs CFA s'écrivent
-// `2000` — le XOF n'a pas de subdivision en circulation. Un naira s'écrit en
-// kobo, un cedi en pesewas.
+// `Int`, jamais `Float`, jamais `Decimal`. La convention est celle de
+// l'ISO 4217 : deux mille francs CFA s'écrivent `2000` — le XOF n'a pas de
+// subdivision — et vingt cedis s'écrivent `2000` aussi, en pesewas.
 //
-// C'est aussi ce que les fournisseurs attendent, et ce que le cœur manipule :
-// une seule convention du bout en bout, donc aucune conversion à oublier.
+// Ce n'est PAS ce que tous les fournisseurs attendent, et cette ligne l'a
+// longtemps affirmé à tort. Paystack compte en centièmes quelle que soit la
+// devise : deux mille francs valent `200000` pour lui. La base garde l'unité
+// ISO, et chaque adaptateur convertit — voir `src/devise.ts`.
+//
+// Une seule convention en base, donc, et la conversion à un seul endroit par
+// fournisseur : c'est ce qui fait qu'une erreur d'un facteur cent ne peut plus
+// se propager d'un adaptateur à l'autre.
 
 generator client {
   provider = "prisma-client-js"

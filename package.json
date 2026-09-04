@@ -1,6 +1,6 @@
 {
   "name": "ndank",
-  "version": "0.8.1",
+  "version": "0.9.0",
   "description": "Abonnements par mobile money, sans carte bancaire.",
   "type": "module",
   "main": "./dist/moteur.cjs",
@@ -105,6 +105,16 @@
       "require": {
         "types": "./dist/reglement.d.cts",
         "default": "./dist/reglement.cjs"
+      }
+    },
+    "./devise": {
+      "import": {
+        "types": "./dist/devise.d.ts",
+        "default": "./dist/devise.js"
+      },
+      "require": {
+        "types": "./dist/devise.d.cts",
+        "default": "./dist/devise.cjs"
       }
     },
     "./offre": {

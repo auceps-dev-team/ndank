@@ -222,13 +222,26 @@ une grille en cinq redémarrages successifs est une façon de perdre un quart
 d'heure. L'hôte qui la tient en base lit ses lignes et les passe à la même
 fonction ; `portsPrisma(...).offres()` le fait pour lui.
 
-⚠️ **Les montants sont en unités mineures, et « mineure » ne veut pas dire
-« centime ».** Le franc CFA n'a pas de subdivision : deux mille francs s'écrivent
-`2000`, pas `200000`. Le cedi et le naira en ont deux : vingt cedis s'écrivent
-`2000`. L'erreur classique vient d'un système à carte qu'on transpose — on y
-écrivait des centimes, on multiplie par cent par réflexe, et l'abonné est débité
-de deux cent mille francs. Aucune vérification ne peut l'attraper : `200000` est
-un montant valide.
+**Les montants sont en unités mineures de l'ISO 4217.** Le franc CFA n'a pas de
+subdivision : deux mille francs s'écrivent `2000`. Le cedi et le naira en ont
+deux : vingt cedis s'écrivent `2000` aussi.
+
+⚠️ **Ce n'est pas ce que les fournisseurs attendent, et Ndank convertit pour
+vous.** Paystack compte en centièmes quelle que soit la devise — pour lui, deux
+mille francs valent `200000`. Ce README affirmait le contraire jusqu'à la
+0.9.0, et le bac à sable l'a démenti : un abonnement à 2 000 F était prélevé
+vingt francs. La table vit dans [`src/devise.ts`](src/devise.ts), la conversion
+dans chaque adaptateur.
+
+L'erreur qu'il reste à éviter, et qu'aucune vérification n'attrapera :
+transposer un tarif d'un système à carte, où l'on écrivait des centimes, et
+multiplier par cent par réflexe. `200000` est un montant valide, et il
+facturerait deux cent mille francs.
+
+**La devise n'est pas un choix libre.** Un compte marchand n'active que les
+devises de son marché : sur un compte XOF, Paystack refuse `NGN`, `GHS`, `KES`,
+`ZAR` et `USD`. Écrire `GHS` dans sa grille avec un compte sénégalais ne produit
+pas une conversion, mais un refus — au premier abonné qui clique.
 
 Ce qui est attrapé, en revanche : un montant non entier, un montant nul, deux
 offres au même identifiant, une cadence inconnue — et **« CFA »**, qui passe

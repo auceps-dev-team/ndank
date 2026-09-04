@@ -23,24 +23,37 @@ import { JOURS_DE_CADENCE, type Cadence } from "./cycle";
  * Dans les deux cas, la vérification est la même — et c'est elle qui compte.
  *
  * ════════════════════════════════════════════════════════════════════════════
- * LE PIÈGE DES UNITÉS MINEURES, DIT ICI PARCE QUE C'EST ICI QU'ON SE TROMPE
+ * LE MONTANT S'ÉCRIT EN UNITÉS MINEURES ISO, ET NDANK CONVERTIT
  *
- * Les montants sont en **unités mineures**, en `Int`, partout dans Ndank et
- * chez tous les fournisseurs. Mais « unité mineure » ne veut pas dire
- * « centime » :
+ * Les montants sont en **unités mineures de l'ISO 4217**, en `Int` :
  *
- *   — le **franc CFA** (XOF, XAF) n'a pas de subdivision en circulation. Deux
- *     mille francs s'écrivent `2000`. Pas `200000` ;
- *   — le **cedi** (GHS), le **naira** (NGN), le **shilling** (KES) en ont deux.
- *     Vingt cedis s'écrivent `2000`.
+ *   — le **franc CFA** (XOF, XAF) n'a pas de subdivision. Deux mille francs
+ *     s'écrivent `2000` ;
+ *   — le **cedi** (GHS), le **naira** (NGN), le **shilling** (KES) ont deux
+ *     décimales. Vingt cedis s'écrivent `2000`.
  *
- * L'erreur classique vient d'un système à carte qu'on transpose : on y écrivait
- * des centimes, on multiplie par cent par réflexe, et l'abonné est débité de
- * deux cent mille francs. Ce n'est pas une erreur d'affichage — c'est un vrai
- * débit, chez un vrai opérateur, sur le téléphone d'une vraie personne.
+ * Ce que les fournisseurs attendent, en revanche, n'est pas cela — et ce
+ * paragraphe l'a longtemps affirmé à tort. **Paystack compte en centièmes
+ * quelle que soit la devise** : pour lui, deux mille francs valent `200000`.
+ * Ndank ne vous demande pas de le savoir ; l'adaptateur convertit, et
+ * `src/devise.ts` porte la table.
  *
- * Aucune vérification ne peut l'attraper : `200000` est un montant valide.
- * D'où ce paragraphe, à l'endroit exact où l'on tape le chiffre.
+ * L'erreur qu'il reste à éviter, celle qu'aucune vérification n'attrapera :
+ * transposer un tarif d'un système à carte, où l'on écrivait des centimes, et
+ * multiplier par cent par réflexe. `200000` est un montant valide, et il
+ * facturerait deux cent mille francs — un vrai débit, chez un vrai opérateur,
+ * sur le téléphone d'une vraie personne.
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ * LA DEVISE N'EST PAS LIBREMENT CHOISIE
+ *
+ * Un compte marchand n'active que les devises de son marché : sur un compte
+ * XOF, Paystack refuse `NGN`, `GHS`, `KES`, `ZAR` et `USD` en `403 Currency not
+ * supported by merchant`.
+ *
+ * Écrire `GHS` dans sa grille quand on a un compte sénégalais ne produit donc
+ * pas une conversion : cela produit un refus, au premier abonné qui clique. La
+ * devise d'une offre est celle du compte, et rien d'autre.
  */
 
 /** Ce qu'on vend, et à quel rythme. */
