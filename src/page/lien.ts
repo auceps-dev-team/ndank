@@ -216,3 +216,105 @@ export function lireLien(
 
   return { valide: true, contenu: { abonnementId, jourLimite } };
 }
+
+// ─────────────────────────────────────────────────────────── lien d'offre ──
+
+/**
+ * Le lien public d'une offre, celui qu'on met sur un site.
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ * IL DÉSIGNE UNE OFFRE, PAS UN ABONNEMENT — ET IL FAUT QUE CE SOIT VISIBLE
+ *
+ * Un lien de relance mène à un abonnement existant : il est personnel, il
+ * expire, et l'ouvrir montre ce que quelqu'un doit. Un lien d'offre mène à un
+ * prix : il est public, il vit sur une page de vente, il est partagé.
+ *
+ * Les distinguer à la lecture n'est pas une élégance. Sans marqueur, un jeton
+ * d'offre relu par `lireLien` désignerait un « abonnement » dont l'identifiant
+ * serait celui d'une offre — et la page afficherait n'importe quoi, ou pire,
+ * l'abonnement de quelqu'un dont l'identifiant coïnciderait.
+ *
+ * D'où le préfixe `O.` et les quatre morceaux : `lireLien` en exige exactement
+ * trois, donc il refuse un jeton d'offre au lieu de le mal lire.
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ * IL SIGNE MÊME S'IL EST PUBLIC
+ *
+ * On pourrait se dire qu'un lien vers un prix affiché n'a rien à protéger. Mais
+ * sans signature, changer l'identifiant dans l'URL permet d'ouvrir la page de
+ * n'importe quelle offre — y compris une **retirée du catalogue**, dont le prix
+ * n'est plus celui qu'on pratique. La signature fixe ce qu'on a publié.
+ */
+export function lienOffre(
+  base: string,
+  secret: string,
+  offreId: string,
+  jours = 365,
+  maintenant: Date = new Date(),
+): string {
+  // Le segment `/o/` fait partie du lien, et pas seulement de la route : c'est
+  // lui qui dit, dès l'URL, qu'on est sur une page de vente publique et non sur
+  // la page personnelle de quelqu'un. Le construire ailleurs qu'ici ferait
+  // qu'un hôte l'oublierait, et le lien mènerait à un 404.
+  return `${base.replace(/\/+$/, "")}/o/${signerOffre(
+    secret,
+    offreId,
+    jourDe(maintenant) + jours,
+  )}`;
+}
+
+/**
+ * Signe un jeton d'offre.
+ *
+ * Un an par défaut, là où un lien de relance vit quinze jours. La différence
+ * n'est pas un oubli : un lien de vente reste sur une page, dans une brochure,
+ * dans un message épinglé. Le faire expirer en quinze jours ferait mourir des
+ * liens que personne ne sait aller remplacer.
+ *
+ * Le prix, lui, ne se fige pas : la page relit la grille à chaque ouverture.
+ * Un lien d'un an vend donc toujours au tarif du jour.
+ */
+export function signerOffre(
+  secret: string,
+  offreId: string,
+  jourLimite: number,
+): string {
+  const charge = `O.${b64url(Buffer.from(offreId, "utf8"))}.${jourLimite.toString(36)}`;
+
+  return `${charge}.${sceller(secret, charge)}`;
+}
+
+export type LectureOffre =
+  | { valide: true; offreId: string }
+  | { valide: false; refus: Refus };
+
+/** Relit un jeton d'offre, ou dit pourquoi il ne vaut rien. */
+export function lireOffre(
+  secret: string,
+  jeton: string,
+  maintenant: Date = new Date(),
+): LectureOffre {
+  const morceaux = jeton.split(".");
+  if (morceaux.length !== 4 || morceaux[0] !== "O") {
+    return { valide: false, refus: "FORME" };
+  }
+
+  const [, id36, limite36, sceau] = morceaux as [string, string, string, string];
+  const charge = `O.${id36}.${limite36}`;
+
+  // Le sceau avant l'expiration, comme pour un lien de relance : l'inverse
+  // confirmerait à celui qui forge que sa forme est la bonne.
+  if (!memeSceau(sceau, sceller(secret, charge))) {
+    return { valide: false, refus: "SCEAU" };
+  }
+
+  const jourLimite = Number.parseInt(limite36, 36);
+  if (!Number.isFinite(jourLimite)) return { valide: false, refus: "FORME" };
+
+  const offreId = Buffer.from(id36, "base64url").toString("utf8");
+  if (offreId === "") return { valide: false, refus: "FORME" };
+
+  if (jourDe(maintenant) > jourLimite) return { valide: false, refus: "EXPIRE" };
+
+  return { valide: true, offreId };
+}

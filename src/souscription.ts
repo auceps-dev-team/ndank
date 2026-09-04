@@ -191,18 +191,71 @@ export function referenceDeSouscription(
   abonneReference: string,
   essai: string,
 ): string {
-  const sur = (valeur: string): string =>
-    /^[A-Za-z0-9-]+$/.test(valeur)
-      ? valeur
-      : Buffer.from(valeur, "utf8").toString("hex");
-
   // `S-` en tête : c'est ce qui la distingue d'une référence de versement au
   // moment de lire un webhook. Sans ce marqueur, `lireReference` la prendrait
   // pour une référence étrangère — ce qui serait juste, mais muet.
-  return `S-${sur(offreId)}-${sur(abonneReference)}-${sur(essai)}`;
+  return `S-${enHex(offreId)}-${enHex(abonneReference)}-${enHex(essai)}`;
+}
+
+/**
+ * Tout est transcrit en hexadécimal, et pas seulement ce qui l'exige.
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ * PARCE QU'IL FAUT POUVOIR LA RELIRE
+ *
+ * La première version ne transcrivait que ce qui sortait de `[A-Za-z0-9-]`, et
+ * laissait le reste tel quel. C'était plus lisible et **ambigu** : une offre
+ * « pass-pro » et un abonné « usr-1 » donnaient `S-pass-pro-usr-1-3`, dont on
+ * ne sait pas où l'offre finit.
+ *
+ * L'ambiguïté ne gênait personne tant que rien ne relisait la référence. Le
+ * checkout public, lui, en a besoin : c'est elle qui porte l'offre et l'abonné
+ * entre la demande de paiement et le retour du fournisseur, sans qu'aucune
+ * table n'ait à les garder.
+ *
+ * L'hexadécimal double la longueur et la rend illisible. Ces références-là ne
+ * s'affichent nulle part — elles voyagent dans une URL de retour et dans le
+ * relevé du marchand.
+ */
+function enHex(valeur: string): string {
+  return Buffer.from(valeur, "utf8").toString("hex");
+}
+
+/** Ce qu'on relit d'une référence de souscription. */
+export interface SouscriptionLue {
+  offreId: string;
+  abonneReference: string;
+  essai: string;
+}
+
+/**
+ * Relit une référence de souscription, ou rend `null`.
+ *
+ * C'est elle qui permet au checkout public de ne rien stocker entre la demande
+ * de paiement et le retour : l'offre et l'abonné voyagent dans la référence,
+ * que le fournisseur nous rend telle quelle.
+ */
+export function lireSouscription(reference: string): SouscriptionLue | null {
+  const trouve = /^S-([0-9a-f]+)-([0-9a-f]+)-([0-9a-f]+)$/.exec(reference);
+  if (!trouve) return null;
+
+  const [, offre, abonne, essai] = trouve as unknown as [
+    string,
+    string,
+    string,
+    string,
+  ];
+
+  const deHex = (h: string): string => Buffer.from(h, "hex").toString("utf8");
+
+  return {
+    offreId: deHex(offre),
+    abonneReference: deHex(abonne),
+    essai: deHex(essai),
+  };
 }
 
 /** Vrai si cette référence est celle d'une première souscription. */
 export function estSouscription(reference: string): boolean {
-  return reference.startsWith("S-");
+  return lireSouscription(reference) !== null;
 }

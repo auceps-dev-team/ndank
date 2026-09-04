@@ -293,3 +293,72 @@ ${retour(reglages)}`,
     reglages,
   );
 }
+
+/**
+ * La page publique d'une offre — celle où l'on devient abonné.
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ * ELLE DEMANDE TROIS CHOSES, ET PAS UNE DE PLUS
+ *
+ * Un nom, un numéro, une adresse. Chaque champ ajouté est une occasion
+ * d'abandonner, et l'on est ici sur un téléphone, dans un formulaire, avant
+ * d'avoir payé quoi que ce soit.
+ *
+ * Le numéro est le seul vraiment obligatoire : c'est lui qui sert d'identité
+ * — le compte mobile money EST le numéro — et c'est par lui qu'on relancera.
+ * L'adresse est demandée parce que le courriel est le canal gratuit de
+ * l'échelle : sans elle, chaque relance de cet abonné coûtera un SMS.
+ *
+ * On le dit dans le formulaire plutôt que de le laisser deviner.
+ */
+export function pageOffre(
+  reglages: ReglagesPage,
+  offre: { id: string; libelle: string; montant: number; devise: string; cadence: string },
+  action: string,
+  erreur: string | null = null,
+): string {
+  const moyens = reglages.fournisseurs
+    .map(
+      (f, i) => `<label class="moyen">
+<input type="radio" name="fournisseur" value="${echapper(f.nom)}"${i === 0 ? " checked" : ""} required>
+<span>${echapper(f.libelle)}</span>
+</label>`,
+    )
+    .join("\n");
+
+  const rythme = {
+    HEBDOMADAIRE: "par semaine",
+    MENSUEL: "par mois",
+    TRIMESTRIEL: "par trimestre",
+    ANNUEL: "par an",
+  }[offre.cadence] ?? "";
+
+  return coquille(
+    `S'abonner à ${offre.libelle}`,
+    `<h1>${echapper(offre.libelle)}</h1>
+<p class="somme">${echapper(reglages.montant(offre.montant, offre.devise))}</p>
+<p class="rature">${echapper(rythme)} · résiliable à tout moment</p>
+${erreur === null ? "" : `<p class="alerte">${echapper(erreur)}</p>`}
+<form method="post" action="${echapper(action)}">
+<label class="champ">
+<span>Votre nom</span>
+<input type="text" name="nom" autocomplete="name" required>
+</label>
+<label class="champ">
+<span>Numéro mobile money</span>
+<input type="tel" name="telephone" inputmode="tel" autocomplete="tel" placeholder="07 00 00 00 00" required>
+</label>
+<label class="champ">
+<span>Courriel</span>
+<input type="text" name="courriel" inputmode="email" autocomplete="email" required>
+</label>
+<fieldset>
+<legend>Payer avec</legend>
+${moyens}
+</fieldset>
+<button type="submit">Payer ${echapper(reglages.montant(offre.montant, offre.devise))} et démarrer</button>
+</form>
+<p class="doux" style="margin-top:16px">Rien n'est prélevé automatiquement : vous validez chaque échéance depuis votre téléphone. Nous vous rappelons une semaine avant, puis la veille — par courriel, ce qui ne vous coûte rien.</p>`,
+    reglages,
+  );
+}

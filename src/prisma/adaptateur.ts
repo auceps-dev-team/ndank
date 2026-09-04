@@ -64,7 +64,10 @@ export interface PortsPrisma {
   /** Pour l'API que le tableau de bord consomme. */
   tableau: Tableau;
   /** Pour faire naître un abonnement à partir d'un premier paiement. */
-  souscriptions: Souscriptions;
+  souscriptions: Souscriptions & {
+    /** Pour le checkout public : retrouver un contact avant de le faire abonné. */
+    abonneParReference(reference: string): Promise<Coordonnees | null>;
+  };
   /** La grille tarifaire telle qu'elle est en base. */
   offres(): Promise<Grille>;
   /** Pour savoir si le moteur tourne encore. */
@@ -726,7 +729,7 @@ export function portsPrisma(
     },
   };
 
-  const souscriptions: Souscriptions = {
+  const souscriptions: PortsPrisma["souscriptions"] = {
     /**
      * Trouve l'abonné ou le crée.
      *
@@ -760,6 +763,34 @@ export function portsPrisma(
       })) as { id: string };
 
       return ligne.id;
+    },
+
+    /**
+     * L'abonné déjà créé, retrouvé par la référence de l'hôte.
+     *
+     * C'est ce qui permet au checkout public de ne rien stocker entre la
+     * demande de paiement et le retour du fournisseur : la référence de
+     * souscription porte cette clé, et le fournisseur nous la rend.
+     */
+    async abonneParReference(reference: string): Promise<Coordonnees | null> {
+      const ligne = await client.abonne.findFirst({
+        where: { projetId, reference },
+        select: {
+          nom: true,
+          courriel: true,
+          telephone: true,
+          appareils: true,
+        },
+      });
+
+      return ligne === null
+        ? null
+        : {
+            nom: ligne.nom,
+            courriel: ligne.courriel,
+            telephone: ligne.telephone,
+            appareils: ligne.appareils,
+          };
     },
 
     /**

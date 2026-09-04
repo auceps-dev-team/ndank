@@ -3,8 +3,13 @@ import { describe, expect, it } from "vitest";
 import { ajouterJours, cycleApresPaiement } from "../cycle";
 import { ErreurFournisseur, type Encaissement, type Issue } from "../encaissement/port";
 import { referenceDeVersement, type Creances } from "../encaissement/reconciliation";
-import type { AbonnementLu } from "../ports";
-import { lienDe, signerLien, jourDe } from "./lien";
+import type { AbonnementLu, Coordonnees } from "../ports";
+import { grille } from "../offre";
+import {
+  lireSouscription,
+  referenceDeSouscription,
+} from "../souscription";
+import { lienDe, lienOffre, signerLien, jourDe } from "./lien";
 import { versFetch } from "./montage";
 import type { ReglagesPage } from "./port";
 import type { RequeteWeb } from "../web";
@@ -541,5 +546,226 @@ describe("le montage", () => {
 
     expect(r.status).toBe(303);
     expect(m.fournisseur.demandes).toHaveLength(1);
+  });
+});
+
+describe("le checkout public", () => {
+  const OFFRE = {
+    id: "createur",
+    libelle: "Pass Créateur",
+    montant: 5000,
+    devise: "XOF",
+    cadence: "MENSUEL" as const,
+  };
+
+  function boutique(
+    options: {
+      fournisseur?: ReturnType<typeof fauxFournisseur>;
+      actif?: boolean;
+    } = {},
+  ) {
+    const f = options.fournisseur ?? fauxFournisseur();
+    const contacts = new Map<string, Coordonnees>();
+    const ouverts: Array<{ offreId: string; abonneId: string }> = [];
+    const faits: FaitPage[] = [];
+
+    const routeur = routeurPage({
+      base: BASE,
+      secret: SECRET,
+      marque: "Baobart",
+      dossier: {
+        async abonnement() {
+          return null;
+        },
+      },
+      fournisseurs: [
+        { nom: "faux", libelle: "Orange Money", encaissement: f.encaissement },
+      ],
+      montant: (m, d) => `${m} ${d}`,
+      indicatifParDefaut: "225",
+      offres: async () => grille([{ ...OFFRE, actif: options.actif ?? true }]),
+      souscriptions: {
+        async abonne(reference, coordonnees) {
+          contacts.set(reference, coordonnees);
+          return `usr-${reference}`;
+        },
+        async abonneParReference(reference) {
+          return contacts.get(reference) ?? null;
+        },
+        async enCours() {
+          return null;
+        },
+        async ouvrir(nouveau) {
+          ouverts.push({ offreId: nouveau.offre.id, abonneId: nouveau.abonneId });
+          return {
+            id: "abo-1",
+            abonneId: nouveau.abonneId,
+            cadence: nouveau.offre.cadence,
+            cycle: nouveau.cycle,
+            resilieeLe: null,
+            suspenduLe: null,
+            montant: nouveau.offre.montant,
+            devise: nouveau.offre.devise,
+            libelle: nouveau.offre.libelle,
+          };
+        },
+      },
+      journal: (fait) => faits.push(fait),
+    });
+
+    const jeton = lienOffre(BASE, SECRET, "createur").split("/o/")[1]!;
+
+    return { routeur, jeton, contacts, ouverts, faits, fournisseur: f };
+  }
+
+  it("montre l'offre et son prix, sans demander plus de trois champs", async () => {
+    // Chaque champ ajouté est une occasion d'abandonner, et l'on est sur un
+    // téléphone, avant d'avoir payé quoi que ce soit.
+    const b = boutique();
+    const r = await b.routeur(requete(`/o/${b.jeton}`));
+
+    expect(r.statut).toBe(200);
+    expect(r.corps).toContain("Pass Créateur");
+    expect(r.corps).toContain("5000 XOF");
+    expect(r.corps.match(/<input type="(text|tel)"/g) ?? []).toHaveLength(3);
+  });
+
+  it("crée le contact avant le paiement, jamais l'abonnement", async () => {
+    // `souscrire` exige un paiement constaté. Un abonnement « en attente » ne
+    // peut pas s'exprimer dans le modèle de cycle : il donnerait un accès
+    // ouvert à qui n'a rien payé, ou un abonné relancé chaque jour.
+    const b = boutique();
+
+    await b.routeur(
+      requete(`/o/${b.jeton}`, {
+        methode: "POST",
+        corps: "nom=Awa&telephone=0700000000&courriel=awa@baobart.ci&fournisseur=faux",
+      }),
+    );
+
+    expect(b.contacts.get("+2250700000000")?.nom).toBe("Awa");
+    expect(b.ouverts).toHaveLength(0);
+  });
+
+  it("porte l'offre et l'abonné dans la référence, sans rien stocker d'autre", async () => {
+    // Pas de table d'attente : donc pas de purge à écrire, pas d'index à tenir,
+    // et pas de réponse à trouver à « que fait-on des lignes que personne n'est
+    // venu chercher ».
+    const b = boutique();
+
+    await b.routeur(
+      requete(`/o/${b.jeton}`, {
+        methode: "POST",
+        corps: "nom=Awa&telephone=0700000000&courriel=awa@baobart.ci&fournisseur=faux",
+      }),
+    );
+
+    const lue = lireSouscription(b.fournisseur.demandes[0]!.reference)!;
+    expect(lue.offreId).toBe("createur");
+    expect(lue.abonneReference).toBe("+2250700000000");
+  });
+
+  it("ouvre l'abonnement au retour, et seulement s'il a payé", async () => {
+    const b = boutique({ fournisseur: fauxFournisseur({ issues: ["REUSSI"] }) });
+
+    await b.routeur(
+      requete(`/o/${b.jeton}`, {
+        methode: "POST",
+        corps: "nom=Awa&telephone=0700000000&courriel=awa@baobart.ci&fournisseur=faux",
+      }),
+    );
+
+    const ref = b.fournisseur.demandes[0]!.reference;
+    const r = await b.routeur(
+      requete(`/o/${b.jeton}/etat`, { parametres: { ref, f: "faux" } }),
+    );
+
+    expect(r.statut).toBe(200);
+    expect(r.corps).toContain("abonnement est ouvert");
+    expect(b.ouverts).toEqual([
+      { offreId: "createur", abonneId: "usr-+2250700000000" },
+    ]);
+  });
+
+  it("refuse une référence qui désigne une autre offre", async () => {
+    // Sans ce garde-fou, il suffirait de changer « ref » pour faire naître un
+    // abonnement à une offre sur le paiement d'une autre — donc au mauvais prix.
+    const b = boutique({ fournisseur: fauxFournisseur({ issues: ["REUSSI"] }) });
+    const volee = referenceDeSouscription("autre-offre", "+2250700000000", "1");
+
+    const r = await b.routeur(
+      requete(`/o/${b.jeton}/etat`, { parametres: { ref: volee, f: "faux" } }),
+    );
+
+    expect(r.statut).toBe(400);
+    expect(b.ouverts).toHaveLength(0);
+  });
+
+  it("exige un courriel, parce que c'est le canal gratuit de l'échelle", async () => {
+    // Sans lui, chaque relance de cet abonné coûtera un SMS.
+    const b = boutique();
+
+    const r = await b.routeur(
+      requete(`/o/${b.jeton}`, {
+        methode: "POST",
+        corps: "nom=Awa&telephone=0700000000&courriel=pasunmail&fournisseur=faux",
+      }),
+    );
+
+    expect(r.statut).toBe(400);
+    expect(b.contacts.size).toBe(0);
+  });
+
+  it("normalise le numéro sans lui retirer son zéro de tête", async () => {
+    const b = boutique();
+
+    await b.routeur(
+      requete(`/o/${b.jeton}`, {
+        methode: "POST",
+        corps:
+          "nom=Awa&telephone=07+00+00+00+00&courriel=awa@baobart.ci&fournisseur=faux",
+      }),
+    );
+
+    expect(b.fournisseur.demandes[0]!.telephone).toBe("+2250700000000");
+  });
+
+  it("refuse de vendre une offre retirée du catalogue", async () => {
+    // Un lien périmé collé quelque part continuerait sinon de vendre ce qu'on
+    // ne vend plus.
+    const b = boutique({ actif: false });
+
+    expect((await b.routeur(requete(`/o/${b.jeton}`))).statut).toBe(410);
+  });
+
+  it("refuse un jeton d'offre là où on attend un jeton de relance", async () => {
+    // Sans le marqueur, un jeton d'offre relu comme un lien de relance
+    // désignerait un « abonnement » dont l'identifiant serait celui d'une offre.
+    const b = boutique();
+
+    expect((await b.routeur(requete(`/${b.jeton}`))).statut).toBe(404);
+  });
+
+  it("ne crée pas un second abonnement quand il y en a déjà un", async () => {
+    const b = boutique({ fournisseur: fauxFournisseur({ issues: ["REUSSI"] }) });
+    b.contacts.set("+2250700000000", {
+      nom: "Awa",
+      courriel: "awa@baobart.ci",
+      telephone: "+2250700000000",
+      appareils: [],
+    });
+
+    const ref = referenceDeSouscription("createur", "+2250700000000", "1");
+    const r = await b.routeur(
+      requete(`/o/${b.jeton}/etat`, { parametres: { ref, f: "faux" } }),
+    );
+
+    expect(r.statut).toBe(200);
+    expect(b.ouverts).toHaveLength(1);
+  });
+
+  it("répond 501 quand l'hôte ne vend pas en ligne", async () => {
+    const m = monter();
+    expect((await m.routeur(requete("/o/nimporte"))).statut).toBe(501);
   });
 });
