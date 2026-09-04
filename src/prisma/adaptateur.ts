@@ -18,6 +18,7 @@ import type { Battements, Trace } from "../battement";
 import type { DossierAbonnement } from "../dossier";
 import type { Passage } from "../moteur";
 import { grille, type Grille, type Offre } from "../offre";
+import { statistiques, type Statistiques } from "../relances";
 import type {
   EcrituresPaiement,
   FaitIntervention,
@@ -136,6 +137,7 @@ function ligneDe(l: LigneAbonnement): LigneTableau {
             nom: l.abonne.nom,
             courriel: l.abonne.courriel,
             telephone: l.abonne.telephone,
+            operateurHabituel: l.abonne.operateurHabituel ?? null,
           },
         }
       : {}),
@@ -218,7 +220,13 @@ function ecrituresDe(c: ClientNdank, projetId: string): EcrituresPaiement {
  */
 const AVEC_ABONNE = {
   abonne: {
-    select: { reference: true, nom: true, courriel: true, telephone: true },
+    select: {
+      reference: true,
+      nom: true,
+      courriel: true,
+      telephone: true,
+      operateurHabituel: true,
+    },
   },
 } as const;
 
@@ -643,6 +651,63 @@ export function portsPrisma(
         total: Number(g._sum?.["montant"] ?? 0),
         nombre: g._count._all,
       }));
+    },
+
+    /**
+     * Combien de relances sont parties, par canal.
+     *
+     * ─────────────────────────────────────────────────────────────────────
+     * UN COMPTE PAR CANAL, ET NON UN `groupBy`
+     *
+     * `Relance.canaux` est un tableau, et l'on ne regroupe pas sur un tableau.
+     * Trois `count` avec `has` valent mieux qu'un balayage — et il n'y a que
+     * trois canaux, ce qui n'a aucune raison de changer souvent.
+     *
+     * Chaque relance ne porte qu'un canal en pratique : `relancer` s'arrête au
+     * premier qui part. Aucune n'est donc comptée deux fois.
+     */
+    async compterRelances(
+      depuis: Date,
+      jusqua: Date,
+    ): Promise<Readonly<Record<string, number>>> {
+      const comptes: Record<string, number> = {};
+
+      for (const canal of ["courriel", "push", "sms"] as const) {
+        comptes[canal] = await client.relance.count({
+          where: {
+            envoyeeLe: { gte: depuis, lt: jusqua },
+            canaux: { has: canal.toUpperCase() },
+            abonnement: { projetId },
+          },
+        });
+      }
+
+      return comptes;
+    },
+
+    /**
+     * Ce que les versements d'un abonné disent de lui.
+     *
+     * On charge les versements comptés — une poignée, même après trois ans —
+     * et l'on calcule. Le faire en base demanderait de lire une date dans une
+     * chaîne de référence, ce qu'aucun index ne sait faire.
+     */
+    async statistiques(abonnementId: string): Promise<Statistiques> {
+      const lignes = await client.versement.findMany({
+        where: {
+          abonnementId,
+          compteLe: { not: null },
+          abonnement: { projetId },
+        },
+        select: { reference: true, compteLe: true },
+      });
+
+      return statistiques(
+        lignes.map((v) => ({
+          reference: v.reference,
+          compteLe: v.compteLe as Date,
+        })),
+      );
     },
 
     async compterVersements(

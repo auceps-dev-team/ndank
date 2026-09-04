@@ -180,6 +180,22 @@ model Abonne {
   /// raison de traverser un module qui ne décide que de qui relancer.
   appareils String[] @default([])
 
+  /// Le moyen de paiement que cet abonné emploie d'habitude.
+  ///
+  /// Ndank ne l'interprète jamais : c'est le nom d'un fournisseur tel que
+  /// l'hôte l'a déclaré dans son registre. La page de validation s'en sert
+  /// pour présélectionner le bon bouton, et rien d'autre.
+  ///
+  /// Le gain est petit et réel : sur mobile, choisir son opérateur est un
+  /// geste de plus entre l'abonné et son paiement, et chaque geste de plus se
+  /// paie en abandons. Celui qui a payé par Wave le mois dernier paiera par
+  /// Wave ce mois-ci.
+  ///
+  /// C'est l'hôte qui l'écrit, dans son `surIssue` : Ndank ne possède pas le
+  /// chemin d'écriture d'un paiement, et il ne va pas se l'inventer pour un
+  /// champ de confort.
+  operateurHabituel String?
+
   creeLe DateTime @default(now())
   majLe  DateTime @updatedAt
 
@@ -326,7 +342,10 @@ model Relance {
   /// au niveau d'une intention. Deux passages simultanés ne peuvent pas noter
   /// deux fois la même relance.
   @@unique([abonnementId, cle])
+  /// Compter les relances d'une période, par canal — le coût des SMS s'en
+  /// déduit. `canaux` est un tableau : la requête filtre avec `has`.
   @@index([abonnementId, envoyeeLe])
+  @@index([envoyeeLe])
   @@map("relance")
 }
 

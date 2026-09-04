@@ -69,6 +69,7 @@ const CHEMINS = [
   "ndank/reglement",
   "ndank/devise",
   "ndank/argent",
+  "ndank/relances",
   "ndank/offre",
   "ndank/souscription",
   "ndank/intervention",

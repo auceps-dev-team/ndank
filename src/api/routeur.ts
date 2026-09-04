@@ -10,6 +10,7 @@ import {
 import { etatDe, type Etat } from "../etats";
 import type { ReponseWeb, RequeteWeb } from "../web";
 import { evolution, recurrentMensuel } from "../argent";
+import { coutDesRelances, type Statistiques, type Tarifs } from "../relances";
 import { formater } from "../devise";
 import { offresActives, type Grille } from "../offre";
 import {
@@ -96,6 +97,14 @@ export interface ReglagesApi {
    */
   fenetreVersements?: number;
   /**
+   * Ce qu'un message coûte, par canal, en unités mineures.
+   *
+   * Ndank ne connaît aucun prix : un SMS ne coûte pas la même chose selon
+   * l'opérateur, le pays et le volume négocié. Sans tarifs, il compte les
+   * messages et laisse le coût à zéro — ce qui reste utile.
+   */
+  tarifs?: Tarifs;
+  /**
    * Le jeton que le tableau de bord présente.
    *
    * Obligatoire. Le rendre facultatif aurait fait qu'un oubli de configuration
@@ -179,6 +188,21 @@ function versJson(
     // qui n'affiche que des identifiants est inutilisable : on relance
     // quelqu'un, pas un `cuid`.
     abonne: ligne.abonne ?? null,
+  };
+}
+
+/** Le détail d'un abonnement, avec ce que ses versements disent de lui. */
+function versJsonDetaille(
+  ligne: LigneTableau,
+  stats: Statistiques | null,
+  maintenant: Date,
+): Record<string, unknown> {
+  return {
+    ...versJson(ligne, maintenant),
+    // Absentes quand l'hôte ne tient pas de registre de versements : `null`
+    // dit qu'on ne sait pas, là où des zéros feraient croire à un abonné
+    // parfaitement ponctuel qui n'aurait jamais payé.
+    statistiques: stats,
   };
 }
 
@@ -364,7 +388,11 @@ export function routeurApi(
         return rendre(json(404, { erreur: "Abonnement introuvable." }));
       }
 
-      return rendre(json(200, versJson(ligne, maintenant)));
+      const stats = reglages.tableau.statistiques
+        ? await reglages.tableau.statistiques(morceaux[1]!)
+        : null;
+
+      return rendre(json(200, versJsonDetaille(ligne, stats, maintenant)));
     }
 
     if (
@@ -555,12 +583,19 @@ async function argent(
   const debutCourant = ajouterJours(maintenant, -jours);
   const debutPrecedent = ajouterJours(maintenant, -jours * 2);
 
-  const [courant, precedent, groupes, parFournisseur] = await Promise.all([
-    reglages.tableau.encaisse(debutCourant, maintenant),
-    reglages.tableau.encaisse(debutPrecedent, debutCourant),
-    reglages.tableau.recurrent(maintenant),
-    reglages.tableau.encaisseParFournisseur?.(debutCourant, maintenant) ?? [],
-  ]);
+  const [courant, precedent, groupes, parFournisseur, relances] =
+    await Promise.all([
+      reglages.tableau.encaisse(debutCourant, maintenant),
+      reglages.tableau.encaisse(debutPrecedent, debutCourant),
+      reglages.tableau.recurrent(maintenant),
+      reglages.tableau.encaisseParFournisseur?.(debutCourant, maintenant) ?? [],
+      reglages.tableau.compterRelances?.(debutCourant, maintenant) ?? null,
+    ]);
+
+  // La devise du premier encaissement, ou celle du récurrent : le coût des
+  // relances n'a pas de devise à lui, il se paie dans celle du marchand.
+  const devisePrincipale =
+    courant[0]?.devise ?? groupes[0]?.devise ?? "XOF";
 
   const avant = new Map(precedent.map((e) => [e.devise, e.total]));
 
@@ -608,5 +643,19 @@ async function argent(
       nombre: m.nombre,
       lisible: formater(m.total, m.devise),
     })),
+
+    /**
+     * Ce que les relances de la période ont coûté.
+     *
+     * C'est ce qui rend mesurable la décision la plus coûteuse du coeur :
+     * l'échelle commence par le gratuit et ne sort le SMS qu'au dernier
+     * moment. Le jour où ce chiffre double sans que le nombre d'abonnés
+     * bouge, c'est que trop de gens arrivent au dernier palier — donc que les
+     * relances gratuites n'arrivent plus.
+     */
+    relances:
+      relances === null
+        ? null
+        : coutDesRelances(relances, reglages.tarifs ?? {}, devisePrincipale),
   });
 }

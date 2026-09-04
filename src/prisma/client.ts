@@ -61,6 +61,8 @@ export interface LigneAbonnement {
     nom: string | null;
     courriel: string | null;
     telephone: string | null;
+    /** Le moyen de paiement qu'il emploie d'habitude. */
+    operateurHabituel?: string | null;
   } | null;
 }
 

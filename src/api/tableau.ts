@@ -1,4 +1,5 @@
 import type { Encaisse, EncaisseParFournisseur, Recurrent } from "../argent";
+import type { Statistiques } from "../relances";
 import { ajouterJours, jour } from "../cycle";
 import { PREAVIS_JOURS, type Etat } from "../etats";
 
@@ -139,6 +140,8 @@ export interface LigneTableau {
     nom: string | null;
     courriel: string | null;
     telephone: string | null;
+    /** Le moyen de paiement qu'il emploie d'habitude. Ndank ne l'interprète pas. */
+    operateurHabituel?: string | null;
   };
 }
 
@@ -267,4 +270,23 @@ export interface Tableau {
    * que la base sait faire. `recurrentMensuel` normalise ensuite au mois.
    */
   recurrent?(maintenant: Date): Promise<readonly Recurrent[]>;
+
+  /**
+   * Combien de relances sont parties sur une période, par canal. Facultatif.
+   *
+   * C'est ce qui rend mesurable la décision d'architecture la plus coûteuse du
+   * cœur : l'échelle commence par le gratuit et ne sort le SMS qu'au dernier
+   * moment. Invérifiable tant que personne ne voit la facture.
+   */
+  compterRelances?(
+    depuis: Date,
+    jusqua: Date,
+  ): Promise<Readonly<Record<string, number>>>;
+
+  /**
+   * Ce que les versements d'un abonné disent de lui. Facultatif.
+   *
+   * « Cycles payés : 6 · Retard moyen : 1,8 jour », dans la maquette.
+   */
+  statistiques?(abonnementId: string): Promise<Statistiques>;
 }

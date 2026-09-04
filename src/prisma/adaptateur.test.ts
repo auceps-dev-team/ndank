@@ -1053,7 +1053,12 @@ describe("les versements, pour le tableau de bord", () => {
       nom: true,
       courriel: true,
       telephone: true,
+      // Le moyen de paiement habituel : la page s'en sert pour présélectionner
+      // le bon bouton, et chaque geste évité sur mobile se paie en abandons.
+      operateurHabituel: true,
     });
+    // Et toujours pas les jetons d'appareil : des poignées opaques n'ont rien
+    // à faire dans un écran.
     expect(appel.args.include.abonne.select.appareils).toBeUndefined();
   });
 });

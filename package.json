@@ -127,6 +127,16 @@
         "default": "./dist/argent.cjs"
       }
     },
+    "./relances": {
+      "import": {
+        "types": "./dist/relances.d.ts",
+        "default": "./dist/relances.js"
+      },
+      "require": {
+        "types": "./dist/relances.d.cts",
+        "default": "./dist/relances.cjs"
+      }
+    },
     "./offre": {
       "import": {
         "types": "./dist/offre.d.ts",
