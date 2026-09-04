@@ -763,6 +763,58 @@ heures va bien, un à cinquante ne va pas, et les deux peuvent tomber sur
 « hier » en jours civils. C'est le seul endroit du dépôt où les heures sont la
 bonne unité, et l'inverser serait une faute.
 
+### Garder la trace de ce qui se passe
+
+Cinq couches exposent un `journal?` facultatif. `journalPrisma` les remplit, et
+écrit enfin dans `WebhookRecu` — une table du schéma que rien n'avait jamais
+touchée.
+
+```ts
+import { journalPrisma } from "ndank/prisma/journal";
+
+const journal = journalPrisma(prisma, {
+  projetId: "prj-...",
+  surErreur: (cause) => console.error("journal Ndank :", cause),
+});
+
+const envoi   = envoiCompose({ courriel, sms }, { journal: journal.envoi });
+const page    = routeurPage({ ...reglages, journal: journal.page });
+const webhook = gestionnaireWebhook({ ...reglages, journal: journal.webhook });
+const api     = routeurApi({ ...reglages, journal: journal.api });
+
+// Après un passage, ou après avoir répondu à une requête.
+await journal.vider();
+```
+
+**Ce qu'il garde, et surtout ce qu'il jette.** Un journal qui se remplit de
+bruit cesse d'être lu :
+
+| Crochet | Conservé |
+|---|---|
+| envoi | les **échecs** — les relances parties sont déjà dans `Relance`, avec leurs canaux |
+| page | **tout**, ouvertures comprises : c'est le seul endroit qui dise combien de gens ouvrent sans aller au bout |
+| webhooks | **tout**, plus le corps brut dans `WebhookRecu` |
+| API | les **non-2xx** — un tableau de bord qui interroge toutes les 30 s produit 2 800 lectures par jour |
+| gestes | les **refus** — les gestes posés sont déjà dans `Evenement`, avec leur auteur |
+
+Une exception à « on jette les réussites » : un envoi **réussi qui rapporte des
+jetons d'appareil morts** est conservé. Expo répond `200` avec un refus par
+appareil — la notification part vers un téléphone et est refusée par l'autre,
+dont l'application a été désinstallée. `Relance` note l'envoi, pas ce jeton-là ;
+et c'est lui qui fait qu'un abonné *semble* joignable en push alors qu'il ne
+l'est plus.
+
+**Il tamponne.** Les crochets sont synchrones à dessein — celui de l'envoi est
+appelé dans la boucle du passage quotidien, où une écriture lente ralentirait
+tout le lot. On ne peut donc pas attendre, et écrire sans attendre serait une
+rafale de cinq cents insertions. Le journal accumule, écrit par lots, et se vide
+tout seul quand le lot déborde pour que la mémoire reste bornée.
+
+`vider()` ne lève jamais : un journal qui fait tomber ce qu'il observe ne sert à
+rien. `surErreur` existe pour que son propre échec se voie quand même — sans
+lui, une base qui refuse les écritures le rendrait silencieusement inutile,
+c'est-à-dire exactement la panne qu'il existe pour révéler ailleurs.
+
 ## Les gestes du tableau de bord
 
 Cinq verbes, sur une adresse et un jeton **distincts** de ceux de l'API de

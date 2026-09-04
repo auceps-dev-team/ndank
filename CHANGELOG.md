@@ -6,6 +6,63 @@ le reste.
 
 ---
 
+## 0.12.0
+
+Cinq journaux qui n'écrivaient nulle part, et une table morte depuis six
+versions.
+
+### Ajouté
+
+**`ndank/prisma/journal`** — `journalPrisma(client, { projetId })` remplit les
+cinq crochets `journal?` de l'envoi, de la page, des webhooks, de l'API et des
+gestes. Aucun n'était implémenté : ils existaient, ils étaient documentés, et
+tout ce qu'ils racontaient disparaissait à la fin du processus.
+
+**`WebhookRecu` cesse d'être morte.** Déclarée dans le schéma depuis la 0.4.0,
+jamais écrite une seule fois. Une table morte n'est pas neutre : elle fait
+croire qu'on garde quelque chose. Le gestionnaire de webhooks porte désormais le
+corps brut et le verdict de signature sur ses faits **terminaux** — jamais sur
+`RECU`, qui est émis avant qu'on sache, et `signatureValide` n'accepte pas de
+doute.
+
+### Ce qu'il jette, et pourquoi
+
+Un journal qui se remplit de bruit cesse d'être lu — ce dépôt porte déjà
+l'argument, écrit à propos des pertes GSM-7 : on criait au loup à chaque
+relance, si bien qu'une vraie perte n'aurait plus été vue.
+
+- **envoi** : les échecs seulement. Les relances parties sont déjà dans
+  `Relance`, avec leurs canaux ;
+- **page** : tout, ouvertures comprises — c'est le seul endroit qui dise combien
+  de gens ouvrent sans aller au bout ;
+- **webhooks** : tout ;
+- **API** : les non-2xx — un tableau de bord qui interroge toutes les trente
+  secondes produit deux mille huit cents lectures par jour ;
+- **gestes** : les refus — les gestes posés sont déjà dans `Evenement`.
+
+**Une exception, trouvée par un test qui se contredisait.** « On jette les
+réussites » était trop large. Expo répond `200` avec un refus **par appareil** :
+une notification part vers un téléphone et est refusée par l'autre, dont
+l'application a été désinstallée. `Relance` note l'envoi, pas ce jeton-là — et
+c'est lui qui fait qu'un abonné *semble* joignable en push alors qu'il ne l'est
+plus. Un envoi réussi qui rapporte des jetons morts est donc conservé.
+
+Le commentaire du test disait la bonne chose, son assertion disait le contraire.
+C'est la politique qui avait tort.
+
+### Il tamponne
+
+Les crochets sont synchrones à dessein : celui de l'envoi est appelé dans la
+boucle du passage quotidien, où une écriture lente ralentirait tout le lot. On
+ne peut donc pas attendre — et écrire sans attendre, cinq cents insertions de
+front, serait une rafale sur la base au moment où elle sert à autre chose.
+
+Le journal accumule, écrit par lots, et se vide tout seul quand le lot déborde.
+`vider()` ne lève jamais ; `surErreur` existe pour que son propre échec se voie
+— sans lui, une base qui refuse les écritures le rendrait silencieusement
+inutile, c'est-à-dire exactement la panne qu'il existe pour révéler ailleurs.
+
+---
 ## 0.11.0
 
 Le moteur dit maintenant s'il tourne encore.
