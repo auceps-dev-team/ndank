@@ -1,4 +1,5 @@
 import { replierAvecPertes, segments } from "../gsm7";
+import { echapper } from "../html";
 import type { Message } from "../ports";
 
 /**
@@ -124,15 +125,6 @@ const CROISEMENT =
 
 // ──────────────────────────────────────────────────────────────── courriel ──
 
-/** Les cinq caractères qui, non échappés, cassent un corps HTML. */
-function echapper(texte: string): string {
-  return texte
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
 
 /**
  * Le courriel.

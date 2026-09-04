@@ -6,7 +6,9 @@ import type { Issue } from "./port";
 import {
   CREANCE_VIERGE,
   cycleDeReference,
+  lireReference,
   reconcilier,
+  referencePour,
   referenceDeVersement,
   type Creances,
   type EtatCreance,
@@ -47,7 +49,7 @@ function faussesCreances(depart: Partial<EtatCreance> = {}, comptes: string[] = 
 function issue(partiel: Partial<Issue> = {}): Issue {
   const a = abonnement();
   return {
-    reference: referenceDeVersement(a.cycle.echeance, 0),
+    reference: referenceDeVersement(a.id, a.cycle.echeance, 0),
     etat: "REUSSI",
     montant: 2000,
     devise: "XOF",
@@ -63,26 +65,94 @@ describe("la référence de versement", () => {
     // Réutiliser la clé du cycle ferait reconnaître le premier versement par le
     // fournisseur, et le second n'aurait jamais lieu.
     const a = abonnement();
-    expect(referenceDeVersement(a.cycle.echeance, 0)).toBe(
-      `${cleDeCycle(a.cycle.echeance)}#1`,
+    expect(referenceDeVersement(a.id, a.cycle.echeance, 0)).toBe(
+      `20260209-1-${a.id}`,
     );
-    expect(referenceDeVersement(a.cycle.echeance, 1)).toBe(
-      `${cleDeCycle(a.cycle.echeance)}#2`,
+    expect(referenceDeVersement(a.id, a.cycle.echeance, 1)).toBe(
+      `20260209-2-${a.id}`,
     );
+  });
+
+  it("porte l'abonnement, sinon deux abonnés se partagent la même clé", () => {
+    // C'est le défaut que la 0.7.0 corrige, et il n'était pas cosmétique.
+    // « 2026-02-09#1 » ne dépendait que de l'échéance : sur de la facturation
+    // mensuelle, les échéances se concentrent, donc deux abonnés recevaient la
+    // même référence. Paystack refuse une référence déjà vue — le second à
+    // payer ce jour-là était rejeté. Pire, `constater(reference)` interroge le
+    // fournisseur PAR cette clé : elle aurait rendu la transaction de
+    // quelqu'un d'autre.
+    const meme = new Date("2026-02-09T00:00:00Z");
+
+    expect(referenceDeVersement("ab-1", meme, 0)).not.toBe(
+      referenceDeVersement("ab-2", meme, 0),
+    );
+  });
+
+  it("n'emploie que des caractères qu'un fournisseur accepte", () => {
+    // Paystack limite une référence aux alphanumériques et à `-`, `.`, `=`,
+    // `_`. Le « # » d'avant n'en faisait pas partie — second défaut de la même
+    // ligne. Un identifiant exotique passe en hexadécimal : illisible, mais
+    // accepté.
+    expect(referenceDeVersement("ab-1", new Date("2026-02-09"), 0)).toMatch(
+      /^[A-Za-z0-9-]+$/,
+    );
+    expect(
+      referenceDeVersement("ab/1 é", new Date("2026-02-09"), 0),
+    ).toMatch(/^[A-Za-z0-9-]+$/);
   });
 
   it("ne bouge pas tant que le versement n'est pas compté", () => {
     // C'est ce qui rend un passage quotidien rejouable : dix passages avant que
     // l'abonné ne paie redemandent tous le même versement.
     const a = abonnement();
-    const dix = Array.from({ length: 10 }, () => referenceDeVersement(a.cycle.echeance, 0));
+    const dix = Array.from({ length: 10 }, () => referenceDeVersement(a.id, a.cycle.echeance, 0));
     expect(new Set(dix).size).toBe(1);
   });
 
-  it("se laisse ramener à sa clé de cycle", () => {
-    expect(cycleDeReference("2026-02-09#3")).toBe("2026-02-09");
-    // Et tolère une référence sans numéro, pour les paiements d'avant.
-    expect(cycleDeReference("2026-02-09")).toBe("2026-02-09");
+  it("se laisse relire, et se ramène à sa clé de cycle", () => {
+    expect(lireReference("20260209-3-ab-1")).toEqual({
+      cycle: "2026-02-09",
+      abonnement: "ab-1",
+      numero: 3,
+    });
+
+    expect(cycleDeReference("20260209-3-ab-1")).toBe("2026-02-09");
+  });
+
+  it("rend la référence entière quand elle n'a pas notre forme", () => {
+    // Une référence étrangère — un autre système qui poste sur le même webhook
+    // — sera donc vue comme portant un autre cycle, et écartée. La confondre
+    // avec le cycle courant ferait prolonger un abonnement sur le paiement de
+    // quelqu'un d'autre.
+    expect(lireReference("REF-EXTERNE-42")).toBeNull();
+    expect(cycleDeReference("REF-EXTERNE-42")).toBe("REF-EXTERNE-42");
+  });
+
+  it("dit à quel abonnement une référence appartient", () => {
+    expect(referencePour("20260209-1-ab-1", "ab-1")).toBe(true);
+    expect(referencePour("20260209-1-ab-1", "ab-2")).toBe(false);
+    expect(referencePour("REF-EXTERNE-42", "ab-1")).toBe(false);
+  });
+});
+
+describe("une référence qui appartient à un autre abonnement", () => {
+  it("est un incident, et ne prolonge rien", async () => {
+    // La page de validation et le gestionnaire de webhooks reçoivent tous deux
+    // la référence depuis l'extérieur. Rien d'autre ne dit à qui elle
+    // appartient — et la prendre pour argent comptant prolongerait le mauvais
+    // abonnement.
+    const a = abonnement();
+    const f = faussesCreances();
+
+    const d = await reconcilier(
+      f.creances,
+      a,
+      issue({ reference: referenceDeVersement("ab-999", a.cycle.echeance, 0) }),
+      "CREDIT",
+    );
+
+    expect(d.faire).toBe("INCIDENT");
+    expect(d.faire === "INCIDENT" && d.motif).toContain("ab-999");
   });
 });
 
@@ -232,7 +302,7 @@ describe("payer en plusieurs fois — crédit", () => {
       issue({
         montant: 800,
         identifiantFournisseur: "chg_2",
-        reference: referenceDeVersement(a.cycle.echeance, 1),
+        reference: referenceDeVersement(a.id, a.cycle.echeance, 1),
       }),
       "CREDIT",
     );
