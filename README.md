@@ -1153,6 +1153,40 @@ chiffres qu'on envoie par SMS ; il n'y a ni session, ni cookie, ni compte, ni
 de tout cela, et lui en donner ferait porter au SDK une responsabilité qui
 appartient à Ndank App.
 
+## Ce qui n'est pas encore éprouvé
+
+**Le paquet n'est pas publié sur npm, et il ne le sera pas avant que cette liste
+soit vide.**
+
+628 tests passent. Ils tournent tous contre des faux que j'ai écrits — et un
+faux ne dément jamais son auteur. Ce qui suit n'a donc jamais rencontré la
+réalité, et chaque ligne est un pari tant qu'elle n'est pas cochée.
+
+- [ ] **L'adaptateur Prisma contre un vrai PostgreSQL.** `ClientNdank` est une
+      interface structurelle, et les tests un `Map` en mémoire. Rien ne garantit
+      qu'une seule des requêtes s'exécute.
+- [ ] **Une migration.** `prisma/` ne contient que `schema.prisma` : il n'y a
+      aucune migration, et le schéma n'a jamais été appliqué à une base.
+- [ ] **Le filtre JSON de `signauxPrisma`.** `detail: { path: ["canal"] }`
+      suppose un comportement de Prisma sur PostgreSQL que je n'ai jamais vu
+      s'exécuter.
+- [ ] **`$transaction`.** Le piège du client transactionnel — écrire par le
+      client extérieur au lieu du `tx` — est documenté et corrigé contre un faux.
+      Un faux ne reproduit pas l'isolation d'une vraie transaction.
+- [ ] **`POST /projection`.** Jamais atteint un serveur, puisqu'il n'existe pas
+      encore.
+- [ ] **Les quatre passerelles d'envoi.** Resend, Brevo, Twilio et Expo sont
+      écrites d'après leur documentation. Aucune n'a jamais été appelée.
+- [ ] **Flutterwave et MTN.** Seul Paystack a tourné en bac à sable — et c'est
+      lui qui a révélé les deux erreurs les plus coûteuses du dépôt.
+- [ ] **Les unités de Flutterwave.** On suppose des unités **majeures**, sans
+      l'avoir vérifié. C'est exactement la forme de l'erreur de facteur 100
+      déjà rencontrée sur Paystack, où `XOF 20.00` s'affichait pour 2 000 F.
+
+Le dernier point mérite d'être lu deux fois : la même erreur a déjà été commise
+une fois, elle n'a été trouvée qu'en regardant un tableau de bord réel, et la
+supposition qui l'a produite est encore en place chez un second fournisseur.
+
 ## Éprouver contre les vrais fournisseurs
 
 ```
