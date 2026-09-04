@@ -1,4 +1,4 @@
-import { createHmac } from "node:crypto";
+import { empreinte } from "./identite";
 
 import type { Cadence } from "./cycle";
 import { httpParDefaut, type Http } from "./http";
@@ -37,48 +37,13 @@ import { httpParDefaut, type Http } from "./http";
  */
 
 /**
- * L'identité d'un abonné, telle qu'elle traverse les hôtes.
+ * L'identité d'un abonné, réexportée depuis `ndank/identite`.
  *
- * ════════════════════════════════════════════════════════════════════════════
- * CE QUE CETTE EMPREINTE FAIT, ET CE QU'ELLE NE FAIT PAS
- *
- * Il faut le dire sans détour, parce que le contraire se croit facilement.
- *
- * **Ce n'est pas de l'anonymisation.** Un numéro de téléphone vit dans un
- * espace minuscule — quelques milliards de valeurs — et quiconque tient le
- * poivre peut en dresser la table complète en quelques heures. Une empreinte de
- * numéro se retrouve, toujours.
- *
- * **Ce qu'elle fait quand même**, et qui n'est pas rien : une copie de la base
- * de Ndank App, prise sans le poivre, ne livre pas un annuaire. C'est la
- * différence entre une fuite qui donne des numéros et une fuite qui donne des
- * empreintes qu'il faut encore vouloir casser.
- *
- * Le poivre est **partagé** entre Ndank App et tous les hôtes — il le faut,
- * puisque l'hôte doit calculer l'empreinte pour la pousser, et Ndank App doit
- * la recalculer quand l'abonné se connecte. Il fuit donc avec n'importe lequel
- * d'entre eux.
- *
- * La conclusion honnête : Ndank App **détient des données personnelles** pour
- * le compte de plusieurs marchands, et l'empreinte ne l'en dispense pas. Elle
- * réduit l'exposition accidentelle, pas l'attaque décidée.
+ * La règle vit là-bas parce que le code SMS s'en sert aussi : si les deux ne
+ * normalisaient pas exactement pareil, l'abonné recevrait un code calculé sur
+ * une écriture de son numéro et verrait des cartes rangées sous une autre.
  */
-export function empreinte(identifiant: string, poivre: string): string {
-  // Normalisé avant, sinon la vue multi-sites ne recolle rien : deux hôtes qui
-  // stockent « 07 00 00 00 00 » et « +2250700000000 », ou « Awa@x.ci » et
-  // « awa@x.ci », désignent la même personne et doivent donner la même
-  // empreinte.
-  //
-  // Le « @ » sépare les deux mondes : une adresse se met en minuscules, un
-  // numéro se réduit à ses chiffres. Sans cette distinction, « awa@x.ci »
-  // deviendrait la chaîne vide et tous les abonnés inscrits par courriel
-  // partageraient une seule et même empreinte.
-  const cle = identifiant.includes("@")
-    ? identifiant.trim().toLowerCase()
-    : identifiant.replace(/[^\d]/g, "");
-
-  return createHmac("sha256", poivre).update(cle, "utf8").digest("base64url");
-}
+export { empreinte, normaliserIdentifiant } from "./identite";
 
 /** Une ligne de projection : de quoi afficher une carte, et rien de plus. */
 export interface Projection {
@@ -274,6 +239,18 @@ export interface AProjeter {
  * Un abonné dont on n'a ni numéro ni adresse ne pourra jamais se connecter à
  * Ndank App pour y voir cette carte. La pousser reviendrait à confier une ligne
  * de données à un service tiers pour que personne ne la lise jamais.
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ * EN REVANCHE, UN NUMÉRO MAL RANGÉ LÈVE
+ *
+ * Ce n'est pas la même chose qu'une absence. Un abonné sans contact est un fait
+ * de la base ; un numéro qui n'est pas en E.164 est un défaut, et il produit
+ * silencieusement une seconde identité pour quelqu'un qui n'en a qu'une.
+ *
+ * La fonction laisse donc remonter l'exception plutôt que de rendre `null` :
+ * elle traite une ligne, et c'est à la boucle qui les parcourt de décider si un
+ * défaut arrête la poussée ou se met de côté. Rendre `null` déciderait à sa
+ * place, et déciderait de se taire.
  */
 export function projectionDe(
   abonnement: AProjeter,

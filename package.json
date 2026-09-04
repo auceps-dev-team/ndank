@@ -127,6 +127,26 @@
         "default": "./dist/argent.cjs"
       }
     },
+    "./identite": {
+      "import": {
+        "types": "./dist/identite.d.ts",
+        "default": "./dist/identite.js"
+      },
+      "require": {
+        "types": "./dist/identite.d.cts",
+        "default": "./dist/identite.cjs"
+      }
+    },
+    "./code": {
+      "import": {
+        "types": "./dist/code.d.ts",
+        "default": "./dist/code.js"
+      },
+      "require": {
+        "types": "./dist/code.d.cts",
+        "default": "./dist/code.cjs"
+      }
+    },
     "./projection": {
       "import": {
         "types": "./dist/projection.d.ts",

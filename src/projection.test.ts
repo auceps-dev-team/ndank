@@ -314,3 +314,33 @@ describe("faire une carte à partir d'un abonnement", () => {
     ).toBeNull();
   });
 });
+
+describe("un numéro mal rangé", () => {
+  const maintenant = new Date("2026-02-09T00:00:00Z");
+
+  it("lève, au lieu de fabriquer une seconde identité en silence", () => {
+    // Une absence de contact est un fait de la base ; un numéro local est un
+    // défaut. Rendre `null` traiterait les deux pareil, et se tairait sur le
+    // second.
+    expect(() =>
+      projectionDe(
+        {
+          id: "abo-1",
+          libelle: "Pass Créateur",
+          montant: 2000,
+          devise: "XOF",
+          cadence: "MENSUEL",
+          debut: new Date("2026-01-10T00:00:00Z"),
+          echeance: new Date("2026-02-09T00:00:00Z"),
+          accesJusquA: new Date("2026-02-16T00:00:00Z"),
+          repriseJusquA: new Date("2026-03-18T00:00:00Z"),
+          resilieeLe: null,
+          suspenduLe: null,
+          abonne: { courriel: null, telephone: "0700000000" },
+        },
+        { site: "Baobart", poivre: POIVRE },
+        maintenant,
+      ),
+    ).toThrow(/E\.164/);
+  });
+});
