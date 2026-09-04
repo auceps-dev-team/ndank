@@ -10,6 +10,7 @@ import {
   type Invitation,
   type Issue,
 } from "../port";
+import { depuisFournisseur, versFournisseur } from "../../devise";
 import { verifierFlutterwave } from "../signature";
 
 /**
@@ -39,6 +40,36 @@ import { verifierFlutterwave } from "../signature";
  *
  * On vérifie donc avant d'appeler, pour que l'erreur nomme le vrai problème.
  */
+
+/**
+ * En combien de décimales Flutterwave compte — et ce point n'est PAS vérifié.
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ * CE QU'ON SAIT, ET CE QU'ON NE SAIT PAS
+ *
+ * Paystack a été mesuré : il compte en centièmes quelle que soit la devise, ce
+ * qui faisait facturer vingt francs pour deux mille. Flutterwave n'a pas pu
+ * l'être — personne n'a fourni de clé de bac à sable.
+ *
+ * `0` traduit la lecture qu'on a de sa documentation : des unités **majeures**,
+ * `amount: 2000` valant deux mille francs. C'est le contraire de Paystack.
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ * POURQUOI CE DOUTE NE PEUT PAS MORDRE LE MARCHÉ PRINCIPAL
+ *
+ * Pour le franc CFA, les deux lectures coïncident : l'ISO 4217 lui donne zéro
+ * décimale, donc `versFournisseur(2000, "XOF", 0)` rend `2000` — la même chose
+ * qu'avant ce fichier.
+ *
+ * L'incertitude ne concerne donc que les devises à deux décimales — cedi,
+ * naira, shilling — chez un hôte Flutterwave. Et si elle se révélait fausse,
+ * elle **sous-facturerait** : `2000` en GHS partirait comme 20 cedis au lieu de
+ * 2 000 pesewas. C'est le sens dans lequel on préfère se tromper.
+ *
+ * `npm run bac-a-sable` le vérifie dès qu'une clé Flutterwave est posée : il
+ * compare ce qu'on envoie à ce que la charge rapporte.
+ */
+const DECIMALES_FLUTTERWAVE = 0;
 
 const BASE = "https://api.flutterwave.cloud/developersandbox";
 const BASE_PROD = "https://api.flutterwave.cloud/f4bexperience";
@@ -229,7 +260,11 @@ export function flutterwave(config: ConfigFlutterwave): Encaissement {
           currency: demande.devise,
           customer_id: client["id"],
           payment_method_id: moyen["id"],
-          amount: demande.montant,
+          amount: versFournisseur(
+            demande.montant,
+            demande.devise,
+            DECIMALES_FLUTTERWAVE,
+          ),
           reference: demande.reference,
           redirect_url: demande.retour,
           meta: { libelle: demande.libelle },
@@ -308,7 +343,11 @@ function lireCharge(
   return {
     reference,
     etat: etatDepuis(charge["status"] as string),
-    montant: Number(charge["amount"] ?? 0),
+    montant: depuisFournisseur(
+      Number(charge["amount"] ?? 0),
+      String(charge["currency"] ?? ""),
+      DECIMALES_FLUTTERWAVE,
+    ),
     devise: (charge["currency"] as string) ?? "",
     identifiantFournisseur: (charge["id"] as string) ?? null,
     regleLe: typeof quand === "string" ? new Date(quand) : null,

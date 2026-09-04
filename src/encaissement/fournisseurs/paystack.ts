@@ -10,6 +10,7 @@ import {
   type Invitation,
   type Issue,
 } from "../port";
+import { depuisFournisseur, versFournisseur } from "../../devise";
 import { verifierPaystack } from "../signature";
 
 /**
@@ -42,16 +43,54 @@ import { verifierPaystack } from "../signature";
  * compris pour un hôte qui encaisse par carte.
  *
  * ════════════════════════════════════════════════════════════════════════════
- * LE MONTANT EST EN UNITÉS MINEURES, ET LE XOF N'EN A PAS
+ * PAYSTACK COMPTE EN CENTIÈMES, QUELLE QUE SOIT LA DEVISE
  *
- * Paystack compte en kobo pour le naira, en pesewas pour le cedi. Le franc CFA
- * n'a pas de subdivision en circulation : 2 000 F se transmet `2000` et non
- * `200000`. Se tromper d'un facteur cent sur un débit réel est le genre
- * d'erreur qu'on ne fait qu'une fois — d'où ce paragraphe plutôt qu'une
- * conversion silencieuse ici.
+ * Ce paragraphe disait le contraire, et il a fallu un bac à sable pour le
+ * démentir. Il affirmait : « le franc CFA n'a pas de subdivision en
+ * circulation, 2 000 F se transmet `2000` et non `200000` ». La première moitié
+ * est vraie ; la seconde était fausse.
+ *
+ * Relevé dans le tableau de bord, en mode test :
+ *
+ *     envoyé « amount: 2000 »    → affiché « XOF 20.00 »
+ *     envoyé « amount: 200000 »  → affiché « XOF 2,000.00 »
+ *
+ * Paystack applique deux décimales à tout. Pour le naira et le cedi, cela
+ * coïncide avec la norme — kobo, pesewas — et l'erreur restait invisible. Pour
+ * le franc CFA, à qui l'ISO 4217 donne zéro décimale, cela ne coïncide pas :
+ * un abonnement à 2 000 F était débité de vingt francs.
+ *
+ * C'est une erreur qui va dans le sens de l'abonné, donc personne ne s'en
+ * plaint. Le marchand la découvre sur son relevé, un mois plus tard.
+ *
+ * La conversion vit ici et non dans le cœur : c'est une particularité de
+ * Paystack, au même titre que sa traduction des statuts. `versFournisseur`
+ * multiplie, `depuisFournisseur` divise, et les deux restent en arithmétique
+ * entière — un flottant sur de l'argent réel est la seule erreur qu'on ne
+ * rattrape jamais.
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ * LA DEVISE EST CELLE DU COMPTE, PAS CELLE DE LA REQUÊTE
+ *
+ * Même séance : sur un compte XOF, `NGN`, `GHS`, `KES`, `ZAR` et `USD`
+ * reviennent tous en `403 Currency not supported by merchant`.
+ *
+ * Un compte marchand n'active que les devises de son marché. La devise d'une
+ * offre n'est donc pas un choix libre — elle est imposée par le compte. Le
+ * message de Paystack est clair, à condition de savoir qu'il parle du compte
+ * et non de la requête ; l'adaptateur le reformule pour qu'on n'ait pas à le
+ * savoir.
  */
 
 const BASE = "https://api.paystack.co";
+
+/**
+ * Deux, toujours.
+ *
+ * Pas `exposant(devise)` : Paystack ne suit pas la norme, il suit sa propre
+ * convention. C'est précisément l'écart entre les deux que ce nombre exprime.
+ */
+const DECIMALES_PAYSTACK = 2;
 
 export interface ConfigPaystack {
   /** Clé secrète `sk_...`. Sert aussi à vérifier la signature des webhooks. */
@@ -158,10 +197,24 @@ export function paystack(config: ConfigPaystack): Encaissement {
     // avec `status: false` est un refus, et le lire comme un succès ferait
     // ouvrir un accès sur une transaction qui n'existe pas.
     if (reponse.statut < 200 || reponse.statut >= 300 || lu["status"] === false) {
+      const dit = (lu["message"] as string) ?? reponse.corps;
+
+      // « Currency not supported by merchant » parle du COMPTE, pas de la
+      // requête — et rien dans la phrase ne le dit. On cherche donc du côté du
+      // code envoyé, alors qu'il faut aller activer la devise dans le tableau
+      // de bord Paystack, ou changer celle de la grille.
+      const surLaDevise = /currency not supported/i.test(dit);
+
       throw new ErreurFournisseur(
         "paystack",
         reponse.statut,
-        (lu["message"] as string) ?? reponse.corps,
+        dit,
+        surLaDevise
+          ? `paystack a refusé la devise : « ${dit} ». Ce n'est pas la ` +
+            `requête qui est en cause, c'est le compte marchand — il n'active ` +
+            `que les devises de son marché. Vérifiez celle de votre grille ` +
+            `tarifaire, ou activez-la chez Paystack.`
+          : undefined,
       );
     }
 
@@ -194,7 +247,11 @@ export function paystack(config: ConfigPaystack): Encaissement {
       const lu = donnees(
         await appeler("/transaction/initialize", "POST", {
           email: demande.abonne.courriel,
-          amount: demande.montant,
+          amount: versFournisseur(
+            demande.montant,
+            demande.devise,
+            DECIMALES_PAYSTACK,
+          ),
           currency: demande.devise,
           reference: demande.reference,
           callback_url: demande.retour,
@@ -270,7 +327,11 @@ function lireTransaction(
   return {
     reference,
     etat: etatDepuis(transaction["status"] as string),
-    montant: Number(transaction["amount"] ?? 0),
+    montant: depuisFournisseur(
+      Number(transaction["amount"] ?? 0),
+      String(transaction["currency"] ?? ""),
+      DECIMALES_PAYSTACK,
+    ),
     devise: (transaction["currency"] as string) ?? "",
     identifiantFournisseur:
       transaction["id"] === undefined ? null : String(transaction["id"]),

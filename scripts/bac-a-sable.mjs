@@ -198,10 +198,31 @@ async function paystack() {
     `état rendu : ${issue.etat} — si c'est EXPIRE, la page de validation ` +
       `annoncera une expiration à quelqu'un qui est en train de payer`,
   );
+  /**
+   * L'aller-retour du montant, qui est le second défaut trouvé ici.
+   *
+   * Ndank compte en unités mineures ISO — `2000` vaut deux mille francs — et
+   * Paystack applique deux décimales à tout. Sans conversion, un abonnement à
+   * 2 000 F était prélevé vingt francs. Le tableau de bord le montrait :
+   *
+   *     envoyé « amount: 2000 »    → affiché « XOF 20.00 »
+   *     envoyé « amount: 200000 »  → affiché « XOF 2,000.00 »
+   *
+   * Ce contrôle vérifie que ce qui revient est bien ce qu'on a demandé, ramené
+   * à notre unité. Il ne dit rien de ce que Paystack a **affiché** — cela, il
+   * faut aller le lire dans le tableau de bord, et c'est pour cette raison que
+   * la référence est lisible en clair.
+   */
   verifier(
-    "le constat rapporte le montant et la devise",
+    "le montant fait l'aller-retour sans changer d'ordre de grandeur",
     issue.montant === MONTANT && issue.devise === DEVISE,
-    `${issue.montant} ${issue.devise}`,
+    `attendu ${MONTANT} ${DEVISE}, reçu ${issue.montant} ${issue.devise} — ` +
+      `un facteur cent signale une convention de décimales qui a changé`,
+  );
+
+  console.log(
+    `    (à lire dans le tableau de bord : la référence ${reference} doit ` +
+      `s'y afficher « XOF ${(MONTANT).toLocaleString("en-US", { minimumFractionDigits: 2 })} »)`,
   );
 
   // Une référence qui n'existe pas ne doit pas ressembler à un échec de

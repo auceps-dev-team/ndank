@@ -265,7 +265,10 @@ describe("Paystack", () => {
             id: 12345,
             reference: "2026-02-09",
             status: "success",
-            amount: 2000,
+            // Ce que Paystack rapporte pour deux mille francs : des centièmes,
+            // quelle que soit la devise. Relevé dans leur tableau de bord —
+            // `amount: 2000` s'y affiche « XOF 20.00 ».
+            amount: 200_000,
             currency: "XOF",
             paid_at: "2026-02-09T10:00:00.000Z",
           },
@@ -277,9 +280,45 @@ describe("Paystack", () => {
 
     expect(f.vues[0]!.url).toContain("/transaction/verify/2026-02-09");
     expect(issue.etat).toBe("REUSSI");
+    // Ramené à l'unité de Ndank : deux mille francs, et non deux cent mille.
     expect(issue.montant).toBe(2000);
     expect(issue.devise).toBe("XOF");
     expect(issue.regleLe?.toISOString()).toBe("2026-02-09T10:00:00.000Z");
+  });
+
+  it("multiplie par cent avant d'envoyer, sinon l'abonné paie vingt francs", async () => {
+    // Le défaut que le bac à sable a trouvé. Ndank compte en unités mineures
+    // ISO — `2000` vaut deux mille francs — mais Paystack applique deux
+    // décimales à tout. Sans conversion, un abonnement à 2 000 F prélevait
+    // vingt francs : une erreur qui va dans le sens de l'abonné, donc que
+    // personne ne signale, et que le marchand découvre sur son relevé.
+    const f = fauxHttp([
+      {
+        corps: {
+          status: true,
+          data: { authorization_url: "https://checkout.paystack.com/x", access_code: "x", reference: "r" },
+        },
+      },
+    ]);
+
+    await paystack({ cleSecrete: "sk", http: f.http }).inviter(DEMANDE);
+
+    const envoye = JSON.parse(f.vues[0]!.corps!) as { amount: number; currency: string };
+    expect(envoye.currency).toBe("XOF");
+    expect(envoye.amount).toBe(200_000);
+  });
+
+  it("reformule le refus de devise, qui parle du compte et non de la requête", async () => {
+    // « Currency not supported by merchant » : rien dans la phrase ne dit que
+    // c'est le compte marchand qui n'active pas cette devise. On cherche donc
+    // du côté du code envoyé.
+    const f = fauxHttp([
+      { statut: 403, corps: { status: false, message: "Currency not supported by merchant" } },
+    ]);
+
+    await expect(
+      paystack({ cleSecrete: "sk", http: f.http }).inviter(DEMANDE),
+    ).rejects.toThrow(/compte marchand/);
   });
 
   it("lit « abandoned » comme EN_ATTENTE, et surtout pas comme EXPIRE", async () => {
@@ -303,7 +342,7 @@ describe("Paystack", () => {
             reference: "20260209-1-ab-1",
             status: "abandoned",
             gateway_response: "The transaction was not completed",
-            amount: 2000,
+            amount: 200_000,
             currency: "XOF",
             paid_at: null,
           },
@@ -325,7 +364,7 @@ describe("Paystack", () => {
 
     const charge = JSON.stringify({
       event: "charge.success",
-      data: { reference: "2026-02-09", status: "success", amount: 2000, currency: "XOF" },
+      data: { reference: "2026-02-09", status: "success", amount: 200_000, currency: "XOF" },
     });
     const sigCharge = createHmac("sha512", cle).update(charge, "utf8").digest("hex");
     expect(adaptateur.lireWebhook(charge, { "x-paystack-signature": sigCharge })!.etat).toBe(
