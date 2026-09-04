@@ -6,6 +6,60 @@ le reste.
 
 ---
 
+## 0.11.0
+
+Le moteur dit maintenant s'il tourne encore.
+
+### Ajouté
+
+**`ndank/battement`** — `passerEtTracer`, `sante`, `direSante`.
+
+Tout le reste de ce dépôt s'occupe de ce qui peut mal se passer *pendant* un
+passage : passerelle en délai d'attente, ligne corrompue, fournisseur qui répond
+de travers. Chacun est rattrapé, compté, journalisé.
+
+**La panne la plus coûteuse n'est pas là.** C'est le passage quotidien qui *ne
+tourne plus du tout* — le cron meurt, le conteneur ne redémarre pas, un
+déploiement casse la planification. Alors il n'y a aucun échec à journaliser : il
+y a du **silence**, et le silence ressemble exactement à « tout va bien ».
+
+Pendant ce temps, plus une relance ne part et plus un accès n'est coupé. Le
+tableau de bord continue d'afficher des chiffres justes — l'état se déduit des
+dates, donc il ne ment pas — mais plus personne n'agit dessus. On s'en aperçoit
+quand un abonné appelle pour dire qu'il n'a jamais été prévenu, trois semaines
+plus tard.
+
+D'où le renversement : **on enregistre chaque passage, y compris ceux où tout
+s'est bien passé.** Un journal d'incidents ne le fait jamais — il n'a rien à dire
+d'un jour sans incident — et c'est précisément pour cela que cette panne lui
+échappe partout.
+
+**Trois états, et non deux.** La trace s'ouvre *avant* le passage et se ferme
+après. Un passage qui a démarré et n'a jamais fini est donc distinguable d'un
+passage qui n'a jamais démarré : le premier laisse peut-être la base à moitié
+écrite, le second veut dire que la planification est morte. Les confondre ferait
+chercher au mauvais endroit.
+
+**Vingt-six heures, et non vingt-quatre.** Un cron quotidien dérive — 6 h 00 un
+jour, 6 h 05 le lendemain — et un seuil à vingt-quatre alerterait sur cette
+dérive normale chaque semaine, jusqu'à ce que plus personne ne regarde.
+
+**`direSante` attache une action à chaque état.** « BLOQUE » sans rien d'autre
+n'aide personne ; « un passage a démarré il y a 4 h et n'a jamais fini » se
+comprend, et la suite se devine. Et quand tout va bien, il le dit — « rien à
+faire » vaut mieux qu'un silence de plus.
+
+**`GET /sante`** sur l'API de lecture, et le modèle `Passage` dans le schéma.
+`portsPrisma` rend `battements`.
+
+### La seule exception à la règle des jours civils
+
+Partout ailleurs, Ndank compare des jours civils : c'est ce qui empêche l'heure
+du cron de décider d'une coupure d'accès. Ici on mesure **le cron lui-même**, et
+les heures sont la bonne unité — un passage à vingt-cinq heures va bien, un à
+cinquante ne va pas, et les deux peuvent tomber sur « hier » en jours civils.
+
+---
 ## 0.10.1
 
 Un correctif, trouvé en expliquant la version précédente.

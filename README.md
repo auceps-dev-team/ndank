@@ -635,6 +635,7 @@ export const GET = versFetch(api, "/api/ndank");
 
 | Route | Ce qu'elle rend |
 |---|---|
+| `GET /sante` | si le moteur tourne encore, et quoi faire sinon |
 | `GET /resume` | les comptes par état, ce qui a vraiment accès, et le taux de réussite des paiements sur trente jours |
 | `GET /offres` | la grille tarifaire — `?toutes=1` inclut les offres retirées |
 | `GET /abonnements?etat=…` | une page, les plus urgents d'abord, avec les coordonnées de l'abonné |
@@ -679,6 +680,88 @@ reconnaîtrait pas.
 Cela ne marche que parce que les dates stockées sont au **minuit civil UTC**,
 ce que `jour()` garantit à l'écriture. C'est la seule hypothèse que cette
 couche fait sur votre base.
+
+## Savoir que le moteur tourne encore
+
+Un seul changement dans votre tâche quotidienne :
+
+```ts
+import { passerEtTracer } from "ndank/battement";
+
+// au lieu de : await passer(ports, redaction)
+await passerEtTracer(ports, redaction, battements);
+```
+
+Puis, dans le tableau de bord :
+
+```
+GET /sante
+{
+  "va": "MUET",
+  "titre": "Aucun passage depuis 51.3 h.",
+  "quoiFaire": "La tâche quotidienne ne tourne plus. Vérifiez la
+                planification : pendant ce temps, plus une relance ne part
+                et plus un accès n'est coupé."
+}
+```
+
+### Pourquoi cela existe
+
+Tout le reste de Ndank s'occupe de ce qui peut mal se passer **pendant** un
+passage. Chacun est rattrapé, compté, journalisé.
+
+La panne la plus coûteuse n'est pas là. C'est le passage quotidien qui **ne
+tourne plus du tout** — le cron meurt, le conteneur ne redémarre pas, un
+déploiement casse la planification.
+
+Alors il n'y a aucun échec à journaliser. Il y a du **silence**, et le silence
+ressemble exactement à « tout va bien ». Le tableau de bord continue d'afficher
+des chiffres justes — l'état se déduit des dates, donc il ne ment pas — mais
+plus personne n'agit dessus. On s'en aperçoit quand un abonné appelle pour dire
+qu'il n'a jamais été prévenu, trois semaines plus tard.
+
+D'où le renversement : **on enregistre chaque passage, y compris ceux où tout
+s'est bien passé.** Un journal d'incidents ne le fait jamais — il n'a rien à
+dire d'un jour sans incident — et c'est précisément pour cela que cette panne
+lui échappe partout.
+
+### Les cinq états
+
+| | Ce que ça veut dire |
+|---|---|
+| `BIEN` | le moteur tourne — *« rien à faire »*, dit explicitement |
+| `JAMAIS` | aucun passage n'a jamais tourné : la tâche n'est pas planifiée |
+| `MUET` | plus de passage depuis trop longtemps : la planification est morte |
+| `BLOQUE` | un passage a démarré et n'a jamais fini — le processus est bloqué |
+| `TOMBE` | le dernier passage est tombé en entier, avec sa cause |
+
+`JAMAIS` et `MUET` ne sont pas la même conversation, et `BLOQUE` non plus : un
+passage interrompu laisse peut-être la base à moitié écrite, ce qu'une
+planification morte ne fait pas. Les confondre ferait chercher au mauvais
+endroit.
+
+### Deux seuils, et pourquoi ces valeurs
+
+**26 heures** avant de crier `MUET`. Un cron quotidien dérive : 6 h 00 un jour,
+6 h 05 le lendemain, et l'écart dépasse déjà vingt-quatre heures. Un seuil à
+vingt-quatre alerterait sur cette dérive normale chaque semaine, jusqu'à ce que
+plus personne ne regarde. Deux heures de marge l'absorbent sans cacher un jour
+manqué, qui en donne quarante-huit.
+
+**2 heures** avant de dire `BLOQUE`. Un passage sur cinq cents abonnements prend
+des secondes ; deux heures est plusieurs ordres de grandeur au-dessus.
+
+Les deux se resserrent : `routeurApi({ sante: { retardTolereHeures: 12 } })`.
+
+### La seule exception à la règle des jours civils
+
+Partout ailleurs, Ndank compare des **jours civils** — c'est ce qui empêche
+l'heure du cron de décider d'une coupure d'accès.
+
+Ici, non : on mesure **le cron lui-même**. Un passage qui remonte à vingt-cinq
+heures va bien, un à cinquante ne va pas, et les deux peuvent tomber sur
+« hier » en jours civils. C'est le seul endroit du dépôt où les heures sont la
+bonne unité, et l'inverser serait une faute.
 
 ## Les gestes du tableau de bord
 
