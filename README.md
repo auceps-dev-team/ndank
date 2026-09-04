@@ -745,6 +745,22 @@ longtemps.
 Il ne tourne pas dans `npm test` : la suite du dépôt tourne en une seconde, sans
 réseau et sans compte, et c'est ce qui fait qu'on la lance.
 
+### Ce qu'il a trouvé la première fois qu'il a tourné
+
+**Paystack marque une transaction `abandoned` trois secondes après sa création.**
+Pas « expirée » : « pas encore payée ». L'adaptateur le traduisait en `EXPIRE`,
+et la page annonçait donc à l'abonné que sa demande avait expiré pendant qu'il
+saisissait son code. Corrigé en 0.8.1.
+
+Aucune relecture du code ne l'aurait attrapé — le mot anglais dit le contraire
+de ce que le champ signifie — et aucun test contre un faux non plus : c'est
+celui qui écrit le faux qui décide quand renvoyer `abandoned`, et il le renvoie
+quand il pense à l'abandon.
+
+Il a aussi **confirmé** ce qui n'était qu'une affirmation : Paystack refuse une
+référence déjà vue (`Duplicate Transaction Reference`), ce sur quoi repose tout
+le correctif de la 0.7.0.
+
 ## Origine
 
 Extrait de [Baobart](https://github.com/auceps-dev-team/Baobart), place de

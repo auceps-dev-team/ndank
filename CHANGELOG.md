@@ -6,6 +6,74 @@ le reste.
 
 ---
 
+## 0.8.1
+
+Le bac à sable a tourné pour la première fois contre un vrai compte Paystack.
+Neuf vérifications, dont une qui a trouvé un défaut sérieux.
+
+### Corrigé
+
+**`abandoned` veut dire « pas encore », et non « trop tard ».** Relevé, trois
+secondes après l'initialisation :
+
+```
+initialize  →  reference « st1788517633705 »
+verify      →  status "abandoned"
+               gateway_response "The transaction was not completed"
+               paid_at null
+```
+
+Paystack marque `abandoned` dès qu'une transaction existe et n'est pas réglée —
+donc pendant **tout** le temps où l'abonné est en train de payer. L'adaptateur
+le traduisait en `EXPIRE`, par lecture du mot.
+
+La page de validation traite `EXPIRE` comme terminal : elle cesse d'interroger
+et annonce « la demande a expiré avant que vous ne la validiez ». L'abonné
+voyait donc ce message cinq secondes après avoir cliqué sur « Régler », alors
+qu'il saisissait son code sur l'écran du fournisseur. Il revenait en arrière,
+recommençait, payait deux fois — ou renonçait.
+
+Aucune relecture du code ne l'aurait attrapé : le mot anglais dit le contraire
+de ce que le champ signifie. Et aucun test contre un faux non plus — c'est
+celui qui écrit le faux qui décide quand renvoyer `abandoned`, et il le renvoie
+quand il pense à l'abandon.
+
+Paystack ne distingue jamais « pas encore » de « renoncé » : le statut reste
+`abandoned` dans les deux cas. C'est donc à Ndank de décider quand cesser
+d'attendre — la page le fait au bout de deux minutes, le passage quotidien au
+bout de l'échéance.
+
+**Le contrôle du doublon acceptait n'importe quelle exception.** Une coupure
+réseau y serait passée pour une confirmation. Il vérifie maintenant que le
+motif parle de duplication.
+
+### Confirmé contre le vrai bac à sable
+
+- **Paystack refuse une référence déjà vue** — `Duplicate Transaction
+  Reference`, en 400. C'est ce sur quoi repose le correctif de la 0.7.0, et ce
+  n'était jusqu'ici qu'une affirmation dans un commentaire ;
+- **une référence inexistante lève** — `Transaction reference not found.`, en
+  400 — plutôt que de ressembler à un échec de paiement, ce qui couperait
+  l'accès de quelqu'un ;
+- **le XOF et le canal `mobile_money` fonctionnent ensemble** : la transaction
+  revient avec `channel: "mobile_money"`, `currency: "XOF"`, `amount: 2000` —
+  ce qui confirme au passage que les unités mineures du franc CFA sont bien des
+  francs entiers ;
+- **la référence de la 0.7.0 passe le jeu de caractères de Paystack.**
+
+### Appris en chemin
+
+**Une adresse en `.test` est refusée.** Le harnais employait
+`essai@ndank.test` — `.test` est pourtant le domaine réservé aux essais
+(RFC 2606). Paystack répond `"email" must be a valid email`, en 400 : un
+message qui ne dit pas que c'est le domaine de premier niveau qui gêne.
+
+**Un compte n'active que les devises de son marché.** NGN, GHS, KES, ZAR et
+USD reviennent en `403 Currency not supported by merchant` sur un compte XOF.
+Le message est clair — pour peu qu'on sache qu'il parle du compte et non de la
+requête.
+
+---
 ## 0.8.0
 
 Ndank s'installe. Et l'on peut enfin dire ce qu'on vend, et faire naître un
