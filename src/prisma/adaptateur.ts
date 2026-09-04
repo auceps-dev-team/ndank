@@ -2,6 +2,8 @@ import { cleDeCycle, type Cadence, type Cycle } from "../cycle";
 import type { AbonnementLu, Canal, Coordonnees, Ecriture, Lecture } from "../ports";
 import type { Creances, EtatCreance } from "../encaissement/reconciliation";
 import { CREANCE_VIERGE } from "../encaissement/reconciliation";
+import type { Bornes, LigneTableau, Page, Tableau } from "../api/tableau";
+import type { DossierAbonnement } from "../page/port";
 import type { ClientNdank, LigneAbonnement } from "./client";
 
 /**
@@ -31,11 +33,72 @@ export interface ReglagesPrisma {
   projetId: string;
 }
 
-/** Ce que l'adaptateur rend : les trois ports du cœur, plus les créances. */
+/** Ce que l'adaptateur rend : tout ce que les couches de Ndank réclament. */
 export interface PortsPrisma {
   lecture: Lecture;
   ecriture: Ecriture;
   creances: Creances;
+  /** Pour la page de validation et le gestionnaire de webhooks. */
+  dossier: DossierAbonnement;
+  /** Pour l'API que le tableau de bord consomme. */
+  tableau: Tableau;
+}
+
+/** `avant` est strict, `apres` est inclusif — comme dans `bornesDe`. */
+function intervalle(
+  borne: { avant?: Date; apres?: Date } | undefined,
+): Record<string, Date> | undefined {
+  if (!borne) return undefined;
+
+  const clauses: Record<string, Date> = {};
+  if (borne.avant) clauses["lt"] = borne.avant;
+  if (borne.apres) clauses["gte"] = borne.apres;
+
+  return Object.keys(clauses).length > 0 ? clauses : undefined;
+}
+
+/**
+ * Traduit les bornes d'un état en clauses Prisma.
+ *
+ * Le cloisonnement par projet est ajouté ici comme partout ailleurs : un
+ * tableau de bord qui compterait les abonnés d'un autre projet serait pire
+ * qu'un chiffre faux.
+ */
+function ouSont(bornes: Bornes, projetId: string): Record<string, unknown> {
+  const ou: Record<string, unknown> = { projetId };
+
+  if (bornes.resiliee === true) ou["resilieeLe"] = { not: null };
+  if (bornes.resiliee === false) ou["resilieeLe"] = null;
+  if (bornes.close === true) ou["closLe"] = { not: null };
+  if (bornes.close === false) ou["closLe"] = null;
+
+  const echeance = intervalle(bornes.echeance);
+  if (echeance) ou["echeance"] = echeance;
+
+  const acces = intervalle(bornes.accesJusquA);
+  if (acces) ou["accesJusquA"] = acces;
+
+  const reprise = intervalle(bornes.repriseJusquA);
+  if (reprise) ou["repriseJusquA"] = reprise;
+
+  return ou;
+}
+
+/** Une ligne, ramenée à ce que le tableau de bord lit. */
+function ligneDe(l: LigneAbonnement): LigneTableau {
+  return {
+    id: l.id,
+    abonneId: l.abonneId,
+    libelle: l.libelle,
+    montant: l.montant,
+    devise: l.devise,
+    cadence: l.cadence,
+    echeance: l.echeance,
+    accesJusquA: l.accesJusquA,
+    repriseJusquA: l.repriseJusquA,
+    resilieeLe: l.resilieeLe,
+    closLe: l.closLe,
+  };
 }
 
 /** Les cadences du schéma, ramenées à celles du cœur. */
@@ -285,5 +348,54 @@ export function portsPrisma(
     });
   }
 
-  return { lecture, ecriture, creances };
+  const dossier: DossierAbonnement = {
+    /**
+     * Lire par identifiant.
+     *
+     * `findFirst` avec `projetId` et non `findUnique` : un identifiant vient du
+     * dehors — d'un jeton de lien, d'une référence de webhook — et `findUnique`
+     * rendrait la ligne d'un autre projet aussi volontiers que la sienne.
+     */
+    async abonnement(id: string): Promise<AbonnementLu | null> {
+      const ligne = await client.abonnement.findFirst({
+        where: { id, projetId },
+      });
+
+      return ligne === null ? null : abonnementDe(ligne);
+    },
+
+    coordonnees(abonneId: string): Promise<Coordonnees> {
+      return lecture.coordonnees(abonneId);
+    },
+  };
+
+  const tableau: Tableau = {
+    async compter(bornes: Bornes): Promise<number> {
+      return client.abonnement.count({ where: ouSont(bornes, projetId) });
+    },
+
+    async lister(bornes: Bornes, page: Page): Promise<readonly LigneTableau[]> {
+      const lignes = await client.abonnement.findMany({
+        where: ouSont(bornes, projetId),
+        // Les plus urgents d'abord : même ordre que `aRelancer`, et pour la
+        // même raison — quand on ne voit qu'une page, il faut que ce soit celle
+        // qui demande une décision.
+        orderBy: { echeance: "asc" },
+        skip: page.depuis,
+        take: page.combien,
+      });
+
+      return lignes.map(ligneDe);
+    },
+
+    async ligne(id: string): Promise<LigneTableau | null> {
+      const ligne = await client.abonnement.findFirst({
+        where: { id, projetId },
+      });
+
+      return ligne === null ? null : ligneDe(ligne);
+    },
+  };
+
+  return { lecture, ecriture, creances, dossier, tableau };
 }

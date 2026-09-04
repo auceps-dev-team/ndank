@@ -84,6 +84,15 @@ export interface Delegue<Ligne> {
   findMany(args?: Args): Promise<Ligne[]>;
   findFirst(args?: Args): Promise<Ligne | null>;
   findUnique(args: Args): Promise<Ligne | null>;
+  /**
+   * Compter, et non charger pour mesurer la longueur.
+   *
+   * Le tableau de bord demande cinq comptes à chaque ouverture — un par état.
+   * Les obtenir en chargeant les lignes ferait passer cent mille abonnements
+   * par le réseau et par la mémoire du processus, cinq fois, pour rendre cinq
+   * nombres.
+   */
+  count(args?: Args): Promise<number>;
   update(args: Args): Promise<unknown>;
   updateMany(args: Args): Promise<unknown>;
   upsert(args: Args): Promise<unknown>;

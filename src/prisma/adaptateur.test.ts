@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import { ajouterJours, cleDeCycle, cycleApresPaiement } from "../cycle";
 import { passer } from "../moteur";
 import type { Canal, Coordonnees, Message, Ports } from "../ports";
+import { routeurApi } from "../api/routeur";
+import { bornesDe } from "../api/tableau";
 import { abonnementDe, portsPrisma } from "./adaptateur";
 import type { ClientNdank, LigneAbonnement } from "./client";
 
@@ -28,27 +30,52 @@ function fauxClient(abonnements: LigneAbonnement[] = []) {
     appels.push({ table, methode, args });
   };
 
+  /** Applique les clauses que l'adaptateur envoie réellement. */
+  const garde = (a: LigneAbonnement, w: any = {}): boolean => {
+    if (w.id !== undefined && a.id !== w.id) return false;
+    if (w.projetId !== undefined && w.projetId !== PROJET) return false;
+
+    if (w.closLe === null && a.closLe !== null) return false;
+    if (w.closLe?.not === null && a.closLe === null) return false;
+    if (w.resilieeLe === null && a.resilieeLe !== null) return false;
+    if (w.resilieeLe?.not === null && a.resilieeLe === null) return false;
+
+    if (w.echeance?.lte && a.echeance > w.echeance.lte) return false;
+    if (w.echeance?.lt && !(a.echeance < w.echeance.lt)) return false;
+    if (w.echeance?.gte && !(a.echeance >= w.echeance.gte)) return false;
+    if (w.accesJusquA?.lt && !(a.accesJusquA < w.accesJusquA.lt)) return false;
+    if (w.accesJusquA?.gte && !(a.accesJusquA >= w.accesJusquA.gte)) return false;
+    if (w.repriseJusquA?.lt && !(a.repriseJusquA < w.repriseJusquA.lt)) return false;
+    if (w.repriseJusquA?.gte && !(a.repriseJusquA >= w.repriseJusquA.gte)) return false;
+
+    return true;
+  };
+
   const client: ClientNdank = {
     abonnement: {
       async findMany(args) {
         noter("abonnement", "findMany", args);
-        const w = args?.where ?? {};
-        return abonnements
-          .filter((a) => {
-            if (w.closLe === null && a.closLe !== null) return false;
-            if (w.resilieeLe === null && a.resilieeLe !== null) return false;
-            if (w.echeance?.lte && a.echeance > w.echeance.lte) return false;
-            return true;
-          })
-          .sort((x, y) => x.echeance.getTime() - y.echeance.getTime())
-          .slice(0, args?.take ?? undefined);
+        const gardees = abonnements
+          .filter((a) => garde(a, args?.where))
+          .sort((x, y) => x.echeance.getTime() - y.echeance.getTime());
+
+        const depuis = args?.skip ?? 0;
+        return gardees.slice(
+          depuis,
+          args?.take === undefined ? undefined : depuis + args.take,
+        );
       },
       async findUnique(args) {
         noter("abonnement", "findUnique", args);
         return abonnements.find((a) => a.id === args.where.id) ?? null;
       },
-      async findFirst() {
-        return null;
+      async findFirst(args) {
+        noter("abonnement", "findFirst", args);
+        return abonnements.find((a) => garde(a, args?.where)) ?? null;
+      },
+      async count(args) {
+        noter("abonnement", "count", args);
+        return abonnements.filter((a) => garde(a, args?.where)).length;
       },
       async update(args) {
         noter("abonnement", "update", args);
@@ -76,6 +103,9 @@ function fauxClient(abonnements: LigneAbonnement[] = []) {
     },
 
     abonne: {
+      async count() {
+        return 0;
+      },
       async findUnique(args) {
         noter("abonne", "findUnique", args);
         return abonnes.get(args.where.id) ?? null;
@@ -101,6 +131,9 @@ function fauxClient(abonnements: LigneAbonnement[] = []) {
     },
 
     relance: {
+      async count() {
+        return 0;
+      },
       async findMany(args) {
         noter("relance", "findMany", args);
         const prefixe = args?.where?.cle?.startsWith ?? "";
@@ -135,6 +168,9 @@ function fauxClient(abonnements: LigneAbonnement[] = []) {
     },
 
     versement: {
+      async count() {
+        return 0;
+      },
       async findFirst(args) {
         noter("versement", "findFirst", args);
         const w = args?.where ?? {};
@@ -166,6 +202,9 @@ function fauxClient(abonnements: LigneAbonnement[] = []) {
     },
 
     evenement: {
+      async count() {
+        return 0;
+      },
       async upsert(args) {
         noter("evenement", "upsert", args);
         const { abonnementId, type, cle } = args.where.abonnementId_type_cle;
@@ -511,5 +550,117 @@ describe("le moteur tourne contre ces ports, sans rien changer", () => {
     await passer(ports, reglages, ajouterJours(c.echeance, -6));
 
     expect(envois).toHaveLength(1);
+  });
+});
+
+describe("le dossier, pour la page et le webhook", () => {
+  it("lit un abonnement par son identifiant", async () => {
+    const f = fauxClient([ligne()]);
+    const p = portsPrisma(f.client, { projetId: PROJET });
+
+    const a = await p.dossier.abonnement("ab-1");
+
+    expect(a?.libelle).toBe("Pass Créateur");
+    expect(a?.cadence).toBe("MENSUEL");
+  });
+
+  it("cloisonne par projet, et n'emploie pas `findUnique`", async () => {
+    // L'identifiant vient du dehors : d'un jeton de lien, d'une référence de
+    // webhook. `findUnique` rendrait la ligne d'un autre projet aussi
+    // volontiers que la sienne — et la page afficherait le montant dû par
+    // l'abonné de quelqu'un d'autre.
+    const f = fauxClient([ligne()]);
+    const p = portsPrisma(f.client, { projetId: PROJET });
+
+    await p.dossier.abonnement("ab-1");
+
+    const appel = f.appels.find((a) => a.methode === "findFirst")!;
+    expect(appel.args.where.projetId).toBe(PROJET);
+    expect(f.appels.some((a) => a.methode === "findUnique" && a.table === "abonnement")).toBe(
+      false,
+    );
+  });
+
+  it("rend null sur un identifiant inconnu, sans lever", async () => {
+    const f = fauxClient([ligne()]);
+    const p = portsPrisma(f.client, { projetId: PROJET });
+
+    expect(await p.dossier.abonnement("ab-999")).toBeNull();
+  });
+});
+
+describe("le tableau, pour l'API du tableau de bord", () => {
+  it("traduit les bornes d'un état en clauses de date", async () => {
+    // Il n'y a pas de colonne `etat` : une requête filtre sur des dates. Le
+    // test vérifie que la traduction arrive intacte jusqu'à la clause envoyée.
+    const f = fauxClient([ligne()]);
+    const p = portsPrisma(f.client, { projetId: PROJET });
+
+    await p.tableau.compter(bornesDe("SUSPENDUE", new Date()));
+
+    const appel = f.appels.find((a) => a.methode === "count")!;
+    expect(appel.args.where.projetId).toBe(PROJET);
+    expect(appel.args.where.resilieeLe).toBeNull();
+    expect(appel.args.where.accesJusquA.lt).toBeInstanceOf(Date);
+    expect(appel.args.where.repriseJusquA.gte).toBeInstanceOf(Date);
+  });
+
+  it("compte sans charger les lignes", async () => {
+    // Le tableau de bord demande cinq comptes à chaque ouverture. Les obtenir
+    // en chargeant les lignes ferait passer cent mille abonnements par le
+    // réseau, cinq fois, pour rendre cinq nombres.
+    const f = fauxClient([ligne(), ligne({ id: "ab-2" })]);
+    const p = portsPrisma(f.client, { projetId: PROJET });
+
+    expect(await p.tableau.compter({ resiliee: false })).toBe(2);
+    expect(f.appels.some((a) => a.methode === "findMany" && a.table === "abonnement")).toBe(
+      false,
+    );
+  });
+
+  it("pagine, et rend les plus urgents d'abord", async () => {
+    const c = cycleApresPaiement(DEPART, "MENSUEL");
+    const f = fauxClient([
+      ligne({ id: "tard", echeance: ajouterJours(c.echeance, 10) }),
+      ligne({ id: "tot", echeance: ajouterJours(c.echeance, -10) }),
+    ]);
+
+    const p = portsPrisma(f.client, { projetId: PROJET });
+    const lignes = await p.tableau.lister({ resiliee: false }, { depuis: 0, combien: 1 });
+
+    expect(lignes).toHaveLength(1);
+    expect(lignes[0]!.id).toBe("tot");
+  });
+
+  it("donne à l'API de quoi retrouver le même état que le moteur", async () => {
+    // Le bout du fil : une ligne écrite en base, comptée par les bornes d'un
+    // état, et rendue par l'API avec cet état-là. Si la traduction dérivait,
+    // c'est ici que cela se verrait.
+    const paiement = ajouterJours(new Date(), -40);
+    const c = cycleApresPaiement(paiement, "MENSUEL");
+
+    const f = fauxClient([
+      ligne({
+        debut: c.debut,
+        echeance: c.echeance,
+        accesJusquA: c.accesJusquA,
+        repriseJusquA: c.repriseJusquA,
+      }),
+    ]);
+
+    const p = portsPrisma(f.client, { projetId: PROJET });
+    const api = routeurApi({ tableau: p.tableau, jeton: "jeton" });
+
+    const r = await api({
+      methode: "GET",
+      chemin: "/abonnements",
+      parametres: { etat: "SUSPENDUE" },
+      corps: "",
+      entetes: { authorization: "Bearer jeton" },
+    });
+
+    const corps = JSON.parse(r.corps) as { lignes: { etat: string }[] };
+    expect(corps.lignes).toHaveLength(1);
+    expect(corps.lignes[0]!.etat).toBe("SUSPENDUE");
   });
 });
