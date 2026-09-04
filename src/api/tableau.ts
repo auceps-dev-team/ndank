@@ -108,6 +108,8 @@ export interface LigneTableau {
   montant: number;
   devise: string;
   cadence: string;
+  /** Depuis quand le cycle en cours court. L'abonné y lit son calendrier. */
+  debut: Date;
   echeance: Date;
   accesJusquA: Date;
   repriseJusquA: Date;

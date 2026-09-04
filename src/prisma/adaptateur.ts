@@ -125,6 +125,7 @@ function ligneDe(l: LigneAbonnement): LigneTableau {
     montant: l.montant,
     devise: l.devise,
     cadence: l.cadence,
+    debut: l.debut,
     echeance: l.echeance,
     accesJusquA: l.accesJusquA,
     repriseJusquA: l.repriseJusquA,

@@ -22,6 +22,7 @@ function ligne(sur: Partial<LigneTableau> = {}): LigneTableau {
     montant: 2000,
     devise: "XOF",
     cadence: "MENSUEL",
+    debut: cycle.debut,
     echeance: cycle.echeance,
     accesJusquA: cycle.accesJusquA,
     repriseJusquA: cycle.repriseJusquA,

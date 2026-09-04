@@ -127,6 +127,16 @@
         "default": "./dist/argent.cjs"
       }
     },
+    "./projection": {
+      "import": {
+        "types": "./dist/projection.d.ts",
+        "default": "./dist/projection.js"
+      },
+      "require": {
+        "types": "./dist/projection.d.cts",
+        "default": "./dist/projection.cjs"
+      }
+    },
     "./relances": {
       "import": {
         "types": "./dist/relances.d.ts",
