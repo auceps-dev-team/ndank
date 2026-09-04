@@ -71,6 +71,28 @@ export interface FaitWebhook {
   abonnementId: string | null;
   detail?: string;
   cause?: unknown;
+
+  /**
+   * Le corps brut, sur le fait **terminal** d'une requête.
+   *
+   * ═══════════════════════════════════════════════════════════════════════
+   * IL EST LÀ POUR QU'ON PUISSE LE CONSERVER
+   *
+   * Le schéma porte une table `WebhookRecu` depuis la 0.4.0 : corps, signature
+   * valide ou non, référence, issue. Elle n'a jamais été écrite une seule fois,
+   * parce que rien ne faisait sortir le corps du gestionnaire.
+   *
+   * C'est pourtant la seule chose qui permette de comprendre après coup. Le
+   * jour où un opérateur change un code sans prévenir, `Issue.brut` ne suffit
+   * pas : il faut ce que la requête disait, avant qu'on ne l'interprète.
+   *
+   * Absent sur `RECU`, qui est émis **avant** qu'on sache si la signature vaut
+   * quelque chose — et `WebhookRecu.signatureValide` n'accepte pas de doute.
+   */
+  corps?: string;
+
+  /** Ce qu'on a conclu de la signature. Absent sur `RECU`, pour la même raison. */
+  signatureValide?: boolean;
 }
 
 export interface ReglagesWebhook {
@@ -150,6 +172,8 @@ export function gestionnaireWebhook(
           fournisseur: nom,
           reference: null,
           abonnementId: null,
+          corps: requete.corps,
+          signatureValide: false,
           cause,
         });
 
@@ -167,6 +191,8 @@ export function gestionnaireWebhook(
         reference: null,
         abonnementId: null,
         detail: "corps illisible",
+        corps: requete.corps,
+        signatureValide: true,
         cause,
       });
 
@@ -182,6 +208,8 @@ export function gestionnaireWebhook(
         fournisseur: nom,
         reference: null,
         abonnementId: null,
+        corps: requete.corps,
+        signatureValide: true,
       });
 
       return reponse(200, "Événement sans objet ici.");
@@ -198,6 +226,8 @@ export function gestionnaireWebhook(
         fournisseur: nom,
         reference: issue.reference,
         abonnementId: null,
+        corps: requete.corps,
+        signatureValide: true,
       });
 
       return reponse(200, "Référence étrangère, ignorée.");
@@ -215,6 +245,8 @@ export function gestionnaireWebhook(
         reference: issue.reference,
         abonnementId: lue.abonnement,
         detail: "lecture impossible",
+        corps: requete.corps,
+        signatureValide: true,
         cause,
       });
 
@@ -230,6 +262,8 @@ export function gestionnaireWebhook(
         fournisseur: nom,
         reference: issue.reference,
         abonnementId: lue.abonnement,
+        corps: requete.corps,
+        signatureValide: true,
       });
 
       return reponse(200, "Abonnement introuvable.");
@@ -244,6 +278,8 @@ export function gestionnaireWebhook(
         reference: issue.reference,
         abonnementId: abonnement.id,
         detail: "surIssue a levé",
+        corps: requete.corps,
+        signatureValide: true,
         cause,
       });
 
@@ -256,6 +292,8 @@ export function gestionnaireWebhook(
       fournisseur: nom,
       reference: issue.reference,
       abonnementId: abonnement.id,
+      corps: requete.corps,
+      signatureValide: true,
       detail: issue.etat,
     });
 

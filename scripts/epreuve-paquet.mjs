@@ -88,6 +88,7 @@ const CHEMINS = [
   "ndank/api/tableau",
   "ndank/api/gestes",
   "ndank/prisma",
+  "ndank/prisma/journal",
 ];
 
 function eprouver(forme) {

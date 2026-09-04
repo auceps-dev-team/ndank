@@ -317,6 +317,16 @@
         "default": "./dist/prisma/adaptateur.cjs"
       }
     },
+    "./prisma/journal": {
+      "import": {
+        "types": "./dist/prisma/journal.d.ts",
+        "default": "./dist/prisma/journal.js"
+      },
+      "require": {
+        "types": "./dist/prisma/journal.d.cts",
+        "default": "./dist/prisma/journal.cjs"
+      }
+    },
     "./schema.prisma": "./prisma/schema.prisma",
     "./package.json": "./package.json"
   },

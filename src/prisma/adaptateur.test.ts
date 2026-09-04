@@ -90,6 +90,9 @@ function fauxClient(
         noter("abonnement", "count", args);
         return abonnements.filter((a) => garde(a, args?.where)).length;
       },
+      async createMany() {
+        return {};
+      },
       async update(args) {
         noter("abonnement", "update", args);
         return {};
@@ -122,6 +125,10 @@ function fauxClient(
     abonne: {
       async count() {
         return 0;
+      },
+      async createMany(args) {
+        noter("?", "createMany", args);
+        return {};
       },
       async findUnique(args) {
         noter("abonne", "findUnique", args);
@@ -161,6 +168,9 @@ function fauxClient(
       async count() {
         return offres.length;
       },
+      async createMany() {
+        return {};
+      },
       async findUnique() {
         return null;
       },
@@ -184,6 +194,10 @@ function fauxClient(
     relance: {
       async count() {
         return 0;
+      },
+      async createMany(args) {
+        noter("?", "createMany", args);
+        return {};
       },
       async findMany(args) {
         noter("relance", "findMany", args);
@@ -221,6 +235,10 @@ function fauxClient(
     versement: {
       async count() {
         return 0;
+      },
+      async createMany(args) {
+        noter("?", "createMany", args);
+        return {};
       },
       async groupBy(args) {
         noter("versement", "groupBy", args);
@@ -266,6 +284,37 @@ function fauxClient(
       },
     },
 
+    webhookRecu: {
+      async createMany(args) {
+        noter("webhookRecu", "createMany", args);
+        return {};
+      },
+      async findMany() {
+        return [];
+      },
+      async count() {
+        return 0;
+      },
+      async findUnique() {
+        return null;
+      },
+      async findFirst() {
+        return null;
+      },
+      async update() {
+        return {};
+      },
+      async updateMany() {
+        return {};
+      },
+      async upsert() {
+        return {};
+      },
+      async create() {
+        return {};
+      },
+    },
+
     passage: {
       async create(args) {
         noter("passage", "create", args);
@@ -302,6 +351,9 @@ function fauxClient(
       async count() {
         return passages.length;
       },
+      async createMany() {
+        return {};
+      },
       async findUnique() {
         return null;
       },
@@ -316,6 +368,10 @@ function fauxClient(
     evenement: {
       async count() {
         return 0;
+      },
+      async createMany(args) {
+        noter("?", "createMany", args);
+        return {};
       },
       async upsert(args) {
         noter("evenement", "upsert", args);

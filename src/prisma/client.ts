@@ -161,6 +161,14 @@ export interface Delegue<Ligne> {
    * nombres.
    */
   count(args?: Args): Promise<number>;
+  /**
+   * Écrire un lot d'un coup.
+   *
+   * C'est ce qui rend le tampon des journaux utile : cinq cents insertions
+   * lancées une par une sont une rafale sur la base, au moment précis où elle
+   * sert à autre chose.
+   */
+  createMany(args: Args): Promise<unknown>;
   update(args: Args): Promise<unknown>;
   updateMany(args: Args): Promise<unknown>;
   upsert(args: Args): Promise<unknown>;
@@ -180,6 +188,8 @@ export interface ClientNdank {
   versement: DelegueVersement;
   evenement: Delegue<{ id: string }>;
   passage: Delegue<LignePassage>;
+  /** La trace brute de ce qu'un fournisseur a posté. */
+  webhookRecu: Delegue<{ id: string }>;
 
   /**
    * La transaction interactive de Prisma.
