@@ -1188,6 +1188,35 @@ Il a aussi **confirmé** ce qui n'était qu'une affirmation : Paystack refuse un
 référence déjà vue (`Duplicate Transaction Reference`), ce sur quoi repose tout
 le correctif de la 0.7.0.
 
+## Voir les pages sans rien monter
+
+Les tableaux de bord sont partis chez Ndank App, mais deux pages restent servies
+par le serveur du marchand et par personne d'autre : celle qu'un abonné ouvre en
+cliquant le lien de son SMS, et le checkout public.
+
+Les voir avant de les brancher demanderait sinon une base, un fournisseur de
+paiement, un jeton signé et un abonné en retard — c'est-à-dire tout le système
+en marche pour vérifier une couleur de bouton.
+
+```sh
+npm run apercu                              # depuis le dépôt
+node node_modules/ndank/scripts/apercu.mjs  # depuis un projet qui l'installe
+```
+
+```
+  ✓ relance.html    200   3352 octets  — ce que l'abonné voit en cliquant le lien de son SMS
+  ✓ checkout.html   200   3765 octets  — le lien public qu'on met sur un site
+```
+
+L'aperçu passe par `routeurPage`, et non par les fonctions de rendu — qui ne
+sont pas exportées. Ce qu'il écrit est donc exactement ce qu'un abonné
+recevrait, **statut compris** : le script vérifie le code de réponse au lieu de
+se contenter de l'afficher, parce qu'une page qui rend 410 s'ouvre parfaitement
+dans un navigateur et ne montre pas ce qu'on croit.
+
+Les fichiers sont autonomes : ni JavaScript, ni ressource externe, thème clair et
+sombre. Ils s'ouvrent hors ligne.
+
 ## Ndank App
 
 L'application hébergée — la base, les tableaux de bord, l'espace abonné — vit

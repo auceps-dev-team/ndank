@@ -6,6 +6,26 @@ le reste.
 
 ---
 
+## 0.13.1
+
+### Ajouté
+
+**`npm run apercu`** — rend les deux pages abonné dans un dossier, sans base,
+sans fournisseur et sans serveur.
+
+Les tableaux de bord sont partis chez Ndank App, mais la page de relance et le
+checkout public restent servis par le marchand. Les voir demandait jusqu'ici
+tout le système en marche : une base, un jeton signé, un abonné en retard.
+
+Le script voyage dans le paquet (`files`), donc un projet qui installe `ndank`
+peut le lancer tel quel. Il passe par `routeurPage` et non par les fonctions de
+rendu — qui ne sont pas exportées — et il **vérifie le code de réponse** plutôt
+que de l'afficher : une page qui rend 410 s'ouvre parfaitement dans un
+navigateur et ne montre pas ce qu'on croit. C'est arrivé la première fois qu'il
+a tourné, sur des dates de démonstration devenues trop vieilles.
+
+---
+
 ## 0.13.0
 
 Les neuf promesses des maquettes, et l'état de santé qui va au-delà du
