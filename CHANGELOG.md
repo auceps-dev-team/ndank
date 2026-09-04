@@ -6,6 +6,114 @@ le reste.
 
 ---
 
+## 0.8.0
+
+Ndank s'installe. Et l'on peut enfin dire ce qu'on vend, et faire naître un
+abonnement.
+
+Cette version répond à cinq questions posées sur le produit lui-même — la
+vérification a trouvé plus de manques que de défauts, ce qui est la bonne
+nouvelle et la mauvaise à la fois.
+
+### Ajouté
+
+**`npm install ndank` fonctionne.** Il ne fonctionnait pas, et rien dans le
+dépôt ne le disait : `"private": true` interdisait la publication, `main`
+pointait sur `./src/moteur.ts` — du TypeScript brut — et il n'y avait aucune
+étape de construction. Ce qui manquait n'était pas la permission, c'était le
+paquet.
+
+`tsup` construit vingt-sept points d'entrée en ESM **et** en CommonJS, avec les
+types. Le CommonJS n'est pas du zèle : une part considérable des services Node
+en production tourne encore ainsi — Express au premier chef — et
+`require("ndank")` doit marcher.
+
+**`scripts/epreuve-paquet.mjs`** fait ce que fera l'hôte : `npm pack`, puis
+`npm install` dans deux projets vides — un ESM, un CommonJS — puis l'import des
+vingt-sept chemins et l'appel de quelques fonctions. Les tests du dépôt
+importent par chemins relatifs et ne passent jamais par `package.json` : ils ne
+pouvaient rien dire de ce qu'un hôte reçoit. Le CI l'exécute.
+
+**La grille tarifaire** — `ndank/offre`. Le schéma portait un modèle `Offre`
+sans lecteur, et un hôte du niveau 1 n'avait aucun endroit où dire ce qu'il
+vend. Elle se déclare en code ou se lit en base, et dans les deux cas elle est
+vérifiée. Chaque règle a un coût réel : un montant non entier se fait arrondir
+ou refuser chez le fournisseur ; deux offres au même identifiant font que
+l'abonné paie l'une et reçoit l'autre ; une cadence inconnue ne se rattrape
+qu'au moment de renouveler, un mois plus tard.
+
+Elle attrape **« CFA »**, et c'est le point qui compte pour cette zone : trois
+lettres majuscules, donc une vérification de forme le laisse passer. Ce n'est
+pourtant pas un code ISO 4217 — le franc CFA s'écrit `XOF` ou `XAF`. Personne
+n'écrit « XOF » sur une facture, et les fournisseurs refusent avec un message
+parlant de devise non prise en charge : on cherche alors du côté du compte
+marchand.
+
+**La souscription** — `ndank/souscription`. Ndank savait relancer, suspendre,
+clore, renouveler, encaisser, réconcilier : tout le cycle de vie d'un
+abonnement **qui existe déjà**. Aucune ligne ne savait en créer un.
+
+`souscrire()` part d'un paiement constaté, et ce refus de faire autrement est
+la décision qui donne sa forme au module. Un abonnement « en attente de premier
+paiement » ne peut pas s'exprimer dans le modèle de cycle — un cycle *commence*
+à un paiement. Inventer un cycle de durée nulle produirait soit un accès
+ouvert, soit un abonné relancé chaque jour pour un abonnement qu'il n'a jamais
+pris.
+
+`Souscriptions.enCours` protège du double abonnement : le double-clic, ou
+l'abonné qui repaie parce qu'il n'a pas vu la confirmation, rendent
+l'abonnement existant au lieu d'en créer un second — dont il ne verrait jamais
+l'un, et qui le relancerait pourtant.
+
+**Trois routes d'API**, tirées des questions posées :
+
+- `GET /offres` — la grille, sans la recopier dans un écran où elle finirait
+  par diverger de ce qu'on facture ;
+- `GET /abonnements/<id>/versements` — chaque ligne dit `regleNonCompte` : un
+  versement réglé mais jamais compté est un paiement qui n'a **pas** prolongé
+  l'abonnement, ce qu'on cherche exactement quand un abonné dit avoir payé ;
+- **les coordonnées de l'abonné**, dans la liste comme dans le détail. Un
+  tableau de bord qui n'affiche que des identifiants est inutilisable : on
+  relance quelqu'un, pas un `cuid`.
+
+`/resume` gagne le taux de réussite des paiements sur trente jours. Pris
+isolément, un versement échoué ressemble à un abonné qui a changé d'avis ;
+c'est leur proportion qui parle.
+
+**`npm run bac-a-sable`** éprouve les adaptateurs contre les vrais bacs à sable
+de Paystack et Flutterwave, à partir du paquet construit. Il ne tourne pas dans
+`npm test` — la suite du dépôt tourne en une seconde sans réseau, et c'est ce
+qui fait qu'on la lance — et il se saute proprement sans clés. Il refuse une
+clé de production : ce script initie de vraies demandes de paiement.
+
+Il vérifie notamment qu'une **référence en double est refusée**, ce sur quoi
+repose tout le correctif de la 0.7.0 et qui n'était jusqu'ici qu'une
+affirmation dans un commentaire.
+
+### Corrigé
+
+**Le schéma Prisma n'était pas dans le paquet.** Le README l'annonçait depuis
+la 0.4.0 et `files` ne le contenait pas : un hôte qui installait Ndank au niveau
+2 ne le trouvait nulle part. Il est désormais livré, et joignable par
+`ndank/schema.prisma`.
+
+**Les exemples du README importaient depuis `./src/`**, donc copiables
+uniquement dans le dépôt lui-même.
+
+### Ce que cette version ne fait toujours pas
+
+Dit ici parce qu'on l'a demandé, et qu'un journal doit répondre :
+
+**Un abonné ne peut pas voir tous les sites où il est abonné.** Chaque hôte a
+sa propre base et sa propre table `abonne`, dont la clé est `(projetId,
+reference)`. Il n'existe aucune identité d'abonné qui traverse deux hôtes — et
+donc aucun moyen de relier « Awa chez l'un » et « Awa chez l'autre ». C'est
+l'objet de la couche de projection, décidée et non encore écrite.
+
+**Rien n'a jamais appelé un vrai fournisseur.** `npm run bac-a-sable` existe ;
+il n'a pas encore tourné avec des clés.
+
+---
 ## 0.7.0
 
 Le chemin est complet : l'abonné reçoit une relance, ouvre un lien, paie, et

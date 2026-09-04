@@ -297,7 +297,8 @@
     "typecheck": "tsc --noEmit",
     "schema": "prisma validate --schema prisma/schema.prisma",
     "verifier": "npm run typecheck && npm run test && npm run build",
-    "prepublishOnly": "npm run verifier"
+    "prepublishOnly": "npm run verifier",
+    "bac-a-sable": "npm run build && node scripts/bac-a-sable.mjs"
   },
   "keywords": [
     "abonnement",

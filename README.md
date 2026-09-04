@@ -204,6 +204,82 @@ d'avancer trois fois la même échéance.
 
 L'argent est en `Int`, en unités mineures — jamais `Float`, jamais `Decimal`.
 
+## Dire ce qu'on vend
+
+```ts
+import { grille } from "ndank/offre";
+
+export const GRILLE = grille([
+  { id: "createur", libelle: "Pass Créateur", montant: 2000,
+    devise: "XOF", cadence: "MENSUEL" },
+  { id: "pro", libelle: "Pass Pro", montant: 20000,
+    devise: "XOF", cadence: "ANNUEL" },
+]);
+```
+
+`grille()` lève **au démarrage** et rend *tous* les défauts d'un coup — corriger
+une grille en cinq redémarrages successifs est une façon de perdre un quart
+d'heure. L'hôte qui la tient en base lit ses lignes et les passe à la même
+fonction ; `portsPrisma(...).offres()` le fait pour lui.
+
+⚠️ **Les montants sont en unités mineures, et « mineure » ne veut pas dire
+« centime ».** Le franc CFA n'a pas de subdivision : deux mille francs s'écrivent
+`2000`, pas `200000`. Le cedi et le naira en ont deux : vingt cedis s'écrivent
+`2000`. L'erreur classique vient d'un système à carte qu'on transpose — on y
+écrivait des centimes, on multiplie par cent par réflexe, et l'abonné est débité
+de deux cent mille francs. Aucune vérification ne peut l'attraper : `200000` est
+un montant valide.
+
+Ce qui est attrapé, en revanche : un montant non entier, un montant nul, deux
+offres au même identifiant, une cadence inconnue — et **« CFA »**, qui passe
+pourtant la règle de forme. Trois lettres majuscules, mais pas un code ISO 4217 :
+c'est `XOF` ou `XAF`, et c'est l'erreur la plus probable dans cette zone.
+
+### Une offre ne se supprime pas
+
+`actif: false` la retire du catalogue sans rien casser : des abonnements en cours
+la référencent, et leur libellé comme leur montant en dépendent. `offresActives()`
+rend ce qu'on propose aujourd'hui, `offreDe()` retrouve n'importe laquelle.
+
+## Faire naître un abonnement
+
+```ts
+import { souscrire } from "ndank/souscription";
+
+const { abonnement, cree } = await souscrire(souscriptions, {
+  offre: offreDe(GRILLE, "createur"),
+  abonne: { reference: "usr-42", nom, courriel, telephone, appareils: [] },
+  paiement: issue.regleLe ?? new Date(),
+});
+```
+
+**On ne souscrit qu'après un paiement constaté**, et ce refus est délibéré. Un
+abonnement « en attente de premier paiement » ne peut pas s'exprimer dans le
+modèle de cycle : un cycle *commence* à un paiement. Inventer un cycle de durée
+nulle produirait l'une de deux choses, toutes deux fausses — un accès ouvert à
+qui n'a rien payé, ou un abonné relancé chaque jour pour un abonnement qu'il n'a
+jamais pris.
+
+L'ordre est donc : montrer la grille, inviter à payer, **puis** souscrire.
+
+```ts
+import { referenceDeSouscription } from "ndank/souscription";
+
+// Ce premier paiement n'a pas encore d'abonnement : sa référence n'en porte pas.
+const reference = referenceDeSouscription(offre.id, "usr-42", String(essai));
+await encaissement.inviter({ reference, montant: offre.montant, ... });
+```
+
+Cette référence-là est **délibérément instable**, contrairement à celle d'un
+versement : quelqu'un qui abandonne son paiement puis recommence doit obtenir une
+*nouvelle* demande, sinon le fournisseur reconnaît l'ancienne et le second essai
+n'a jamais lieu.
+
+Ce qui protège du double paiement n'est donc pas la référence, mais
+`Souscriptions.enCours` : `cree` vaut `false` et l'abonnement existant est rendu.
+C'est le cas normal du double-clic, ou de l'abonné qui repaie parce qu'il n'a pas
+vu la confirmation — pas une erreur.
+
 ## Envoyer les relances
 
 `Envoi` était le dernier port à écrire. Il ne l'est plus : Ndank rédige les
@@ -546,9 +622,25 @@ export const GET = versFetch(api, "/api/ndank");
 
 | Route | Ce qu'elle rend |
 |---|---|
-| `GET /resume` | les comptes par état, et combien ont vraiment accès |
-| `GET /abonnements?etat=…` | une page, les plus urgents d'abord |
+| `GET /resume` | les comptes par état, ce qui a vraiment accès, et le taux de réussite des paiements sur trente jours |
+| `GET /offres` | la grille tarifaire — `?toutes=1` inclut les offres retirées |
+| `GET /abonnements?etat=…` | une page, les plus urgents d'abord, avec les coordonnées de l'abonné |
 | `GET /abonnements/<id>` | un abonnement |
+| `GET /abonnements/<id>/versements` | ses paiements, du plus récent au plus ancien |
+
+Les deux dernières routes et `/offres` répondent **501** quand l'hôte ne les a
+pas branchées : elles existent, il ne les sert pas. Un 404 ferait chercher une
+faute de frappe dans l'URL.
+
+Chaque versement porte `regleNonCompte` : un paiement réglé chez le fournisseur
+mais jamais compté par Ndank est un paiement qui n'a **pas** prolongé
+l'abonnement. C'est exactement ce qu'on cherche quand un abonné dit avoir payé.
+
+Les coordonnées de l'abonné voyagent avec la liste. On aurait pu les réserver au
+détail, mais ce serait un réconfort et non une protection : le jeton donne accès
+aux deux routes, donc qui peut lire le détail peut le lire cent fois. Et un
+tableau de bord qui n'affiche que des identifiants est inutilisable — on relance
+quelqu'un, pas un `cuid`.
 
 **Elle ne sait que lire, par construction.** Le port `Tableau` n'a aucun verbe
 qui écrit, et le routeur refuse tout ce qui n'est pas `GET`. Le détour par une
@@ -626,6 +718,32 @@ tient pas.
 **Il ne stocke rien.** Aucune base, aucun fichier, aucune dépendance. Le cœur
 est pur — c'est ce qui permet d'éprouver « un passage qui a raté trois jours
 n'envoie qu'une relance » sans rien monter, en une milliseconde.
+
+**Il ne relie pas un abonné d'un site à l'autre.** Chaque hôte a sa propre base,
+et sa table `abonne` est indexée par `(projetId, reference)`. Il n'existe aucune
+identité qui traverse deux hôtes : « Awa chez l'un » et « Awa chez l'autre » sont
+deux lignes que rien ne rapproche, et Ndank ne voit jamais les deux. Un abonné ne
+peut donc pas voir, en un endroit, tous les services auxquels il est abonné.
+C'est l'objet de la couche de projection — décidée, pas encore écrite.
+
+## Éprouver contre les vrais fournisseurs
+
+```
+npm run bac-a-sable
+```
+
+Tous les adaptateurs de paiement sont testés contre un faux `Http` qui rejoue ce
+qu'on **croit** que l'API du fournisseur fait. C'est ce qui les rend éprouvables
+sans compte marchand, et c'est aussi leur limite : un faux ne dément jamais celui
+qui l'a écrit.
+
+Ce script initie de vraies demandes chez Paystack et Flutterwave, à partir du
+paquet construit. Sans clés, il ne fait rien et le dit. Il **refuse une clé de
+production** — un vrai débit sur un vrai abonné se fait une fois et se regrette
+longtemps.
+
+Il ne tourne pas dans `npm test` : la suite du dépôt tourne en une seconde, sans
+réseau et sans compte, et c'est ce qui fait qu'on la lance.
 
 ## Origine
 
