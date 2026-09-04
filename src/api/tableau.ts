@@ -1,3 +1,4 @@
+import type { Encaisse, EncaisseParFournisseur, Recurrent } from "../argent";
 import { ajouterJours, jour } from "../cycle";
 import { PREAVIS_JOURS, type Etat } from "../etats";
 
@@ -235,4 +236,35 @@ export interface Tableau {
    * qui a changé d'avis.
    */
   compterVersements?(depuis: Date): Promise<Readonly<Record<string, number>>>;
+
+  /**
+   * Ce qui est entré sur une période, par devise. Facultatif.
+   *
+   * ═══════════════════════════════════════════════════════════════════════
+   * SEULEMENT CE QUI A ÉTÉ COMPTÉ
+   *
+   * Un versement `REUSSI` mais jamais compté est un paiement qui n'a pas
+   * prolongé l'abonnement — un incident, pas une recette. L'inclure ferait
+   * afficher de l'argent qu'on a bien reçu mais dont personne n'a rien fait,
+   * et masquerait précisément l'écart qu'on cherche quand un abonné dit avoir
+   * payé.
+   *
+   * L'implémentation filtre donc sur `compteLe`, jamais sur `etat`.
+   */
+  encaisse?(depuis: Date, jusqua: Date): Promise<readonly Encaisse[]>;
+
+  /** La même chose, ventilée par fournisseur. Facultatif. */
+  encaisseParFournisseur?(
+    depuis: Date,
+    jusqua: Date,
+  ): Promise<readonly EncaisseParFournisseur[]>;
+
+  /**
+   * Les abonnements qui ont accès, groupés par devise et par cadence.
+   *
+   * Groupés et non listés : sur cent mille abonnés, rendre les montants un par
+   * un ferait passer la table entière par le réseau pour calculer une somme
+   * que la base sait faire. `recurrentMensuel` normalise ensuite au mois.
+   */
+  recurrent?(maintenant: Date): Promise<readonly Recurrent[]>;
 }

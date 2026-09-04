@@ -119,22 +119,38 @@ export interface LigneVersement {
   creeLe: Date;
 }
 
-/** Ce que `groupBy` rend quand on compte les versements par état. */
-export interface GroupeVersement {
-  etat: string;
+/**
+ * Ce qu'un `groupBy` rend.
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ * LES CHAMPS REGROUPÉS SONT OUVERTS, ET C'EST LE MÊME PARTAGE QUE PARTOUT
+ *
+ * Ils dépendent de l'appel : `by: ["etat"]` en rend un, `by: ["fournisseur",
+ * "devise"]` en rend deux, et `_sum` ne contient que ce qu'on a demandé de
+ * sommer. Les typer exactement demanderait de reproduire l'inférence de
+ * Prisma — donc d'en dépendre, ce que ce fichier existe pour éviter.
+ *
+ * Les lectures convertissent explicitement. C'est un peu plus verbeux, et cela
+ * laisse voir à quel endroit la conversion se fait — ce qui vaut mieux qu'un
+ * type inventé dans lequel on aurait confiance à tort.
+ */
+export interface Groupe {
   _count: { _all: number };
+  _sum?: Readonly<Record<string, number | null>>;
+  readonly [champ: string]: unknown;
 }
 
 /**
- * Le délégué `versement`, qui sait en plus regrouper.
+ * Un délégué qui sait en plus regrouper.
  *
- * `groupBy` ne rentre pas dans `Delegue<Ligne>` : il ne rend pas des lignes,
- * il rend des agrégats. Le décrire à part vaut mieux que d'élargir `Delegue`
- * pour tous les autres, qui n'en ont pas besoin.
+ * `groupBy` ne rentre pas dans `Delegue<Ligne>` : il ne rend pas des lignes, il
+ * rend des agrégats. Le décrire à part vaut mieux que d'élargir `Delegue` pour
+ * tous les autres, qui n'en ont pas besoin.
  */
-export interface DelegueVersement extends Delegue<LigneVersement> {
-  groupBy(args: Args): Promise<GroupeVersement[]>;
+export interface DelegueGroupable<Ligne> extends Delegue<Ligne> {
+  groupBy(args: Args): Promise<Groupe[]>;
 }
+
 
 /**
  * Les arguments d'une requête Prisma.
@@ -181,11 +197,11 @@ export interface Delegue<Ligne> {
  * Un `PrismaClient` généré depuis `prisma/schema.prisma` le satisfait tel quel.
  */
 export interface ClientNdank {
-  abonnement: Delegue<LigneAbonnement>;
+  abonnement: DelegueGroupable<LigneAbonnement>;
   abonne: Delegue<LigneAbonne>;
   offre: Delegue<LigneOffre>;
   relance: Delegue<LigneRelance>;
-  versement: DelegueVersement;
+  versement: DelegueGroupable<LigneVersement>;
   evenement: Delegue<{ id: string }>;
   passage: Delegue<LignePassage>;
   /** La trace brute de ce qu'un fournisseur a posté. */

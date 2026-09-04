@@ -90,6 +90,28 @@ function fauxClient(
         noter("abonnement", "count", args);
         return abonnements.filter((a) => garde(a, args?.where)).length;
       },
+      async groupBy(args) {
+        noter("abonnement", "groupBy", args);
+        const cles = new Map<string, { total: number; nombre: number }>();
+        for (const a of abonnements) {
+          if (args?.where?.projetId !== undefined && args.where.projetId !== PROJET) continue;
+          if (args?.where?.resilieeLe === null && a.resilieeLe !== null) continue;
+          if (args?.where?.suspenduLe === null && a.suspenduLe !== null) continue;
+          if (args?.where?.closLe === null && a.closLe !== null) continue;
+          if (args?.where?.accesJusquA?.gte && a.accesJusquA < args.where.accesJusquA.gte) continue;
+          const k = `${a.devise}|${a.cadence}`;
+          const v = cles.get(k) ?? { total: 0, nombre: 0 };
+          v.total += a.montant;
+          v.nombre += 1;
+          cles.set(k, v);
+        }
+        return [...cles].map(([k, v]) => ({
+          devise: k.split("|")[0],
+          cadence: k.split("|")[1],
+          _sum: { montant: v.total },
+          _count: { _all: v.nombre },
+        }));
+      },
       async createMany() {
         return {};
       },

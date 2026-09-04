@@ -117,6 +117,16 @@
         "default": "./dist/devise.cjs"
       }
     },
+    "./argent": {
+      "import": {
+        "types": "./dist/argent.d.ts",
+        "default": "./dist/argent.js"
+      },
+      "require": {
+        "types": "./dist/argent.d.cts",
+        "default": "./dist/argent.cjs"
+      }
+    },
     "./offre": {
       "import": {
         "types": "./dist/offre.d.ts",

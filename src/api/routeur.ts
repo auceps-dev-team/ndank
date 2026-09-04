@@ -9,6 +9,8 @@ import {
 } from "../battement";
 import { etatDe, type Etat } from "../etats";
 import type { ReponseWeb, RequeteWeb } from "../web";
+import { evolution, recurrentMensuel } from "../argent";
+import { formater } from "../devise";
 import { offresActives, type Grille } from "../offre";
 import {
   bornesDe,
@@ -300,6 +302,24 @@ export function routeurApi(
       return rendre(json(200, await resume(reglages, maintenant)));
     }
 
+    /**
+     * L'argent : ce qui est entré, et ce qui se répète.
+     *
+     * ─────────────────────────────────────────────────────────────────────
+     * SÉPARÉE DE `/resume`, ET CE N'EST PAS UN DÉTAIL DE ROUTAGE
+     *
+     * `/resume` compte des abonnements : cinq requêtes indexées, rapides, que
+     * le tableau de bord peut demander souvent. L'argent demande des sommes et
+     * des regroupements sur la table des versements, qui grossit sans fin.
+     *
+     * Les mélanger ferait payer le prix du second à chaque affichage du
+     * premier — et le premier est celui qu'on regarde toutes les trente
+     * secondes.
+     */
+    if (morceaux[0] === "argent" && morceaux.length === 1) {
+      return rendre(await argent(reglages, requete, maintenant));
+    }
+
     if (morceaux[0] === "offres" && morceaux.length === 1) {
       if (!reglages.offres) {
         // 501 et non 404 : la route existe, l'hôte ne l'a simplement pas
@@ -501,4 +521,92 @@ async function lister(
 function entier(valeur: string | undefined, defaut: number): number {
   const n = Number.parseInt(valeur ?? "", 10);
   return Number.isFinite(n) ? n : defaut;
+}
+
+/**
+ * Ce qui est entré, et ce qui se répète.
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ * DEUX PÉRIODES, PARCE QU'UN CHIFFRE SEUL NE DIT RIEN
+ *
+ * « 214 000 F encaissés ce mois » ne dit ni si c'est bien ni si c'est
+ * inquiétant. C'est la comparaison qui parle, et elle demande la période
+ * précédente — donc deux requêtes, pas une.
+ *
+ * `jours` est réglable : trente par défaut, ce qui compare un mois au
+ * précédent. Sur sept, on compare une semaine à la précédente et l'on voit un
+ * incident d'opérateur ; sur quatre-vingt-dix, une tendance.
+ */
+async function argent(
+  reglages: ReglagesApi,
+  requete: RequeteWeb,
+  maintenant: Date,
+): Promise<ReponseWeb> {
+  if (!reglages.tableau.encaisse || !reglages.tableau.recurrent) {
+    return json(501, {
+      erreur:
+        "Cet hôte ne tient pas de registre de versements. " +
+        "Implémentez `Tableau.encaisse` et `Tableau.recurrent`.",
+    });
+  }
+
+  const jours = Math.min(365, Math.max(1, entier(requete.parametres["jours"], 30)));
+
+  const debutCourant = ajouterJours(maintenant, -jours);
+  const debutPrecedent = ajouterJours(maintenant, -jours * 2);
+
+  const [courant, precedent, groupes, parFournisseur] = await Promise.all([
+    reglages.tableau.encaisse(debutCourant, maintenant),
+    reglages.tableau.encaisse(debutPrecedent, debutCourant),
+    reglages.tableau.recurrent(maintenant),
+    reglages.tableau.encaisseParFournisseur?.(debutCourant, maintenant) ?? [],
+  ]);
+
+  const avant = new Map(precedent.map((e) => [e.devise, e.total]));
+
+  return json(200, {
+    calculeLe: maintenant.toISOString(),
+    jours,
+    depuis: debutCourant.toISOString(),
+
+    /**
+     * Une ligne par devise, jamais un total unique.
+     *
+     * Le franc CFA et le cedi n'ont ni la même valeur ni le même nombre de
+     * décimales. Les additionner produirait un nombre qui ressemble à de
+     * l'argent sans en être — et personne ne s'en apercevrait, parce qu'un
+     * total est toujours plausible.
+     */
+    encaisse: courant.map((e) => ({
+      devise: e.devise,
+      total: e.total,
+      nombre: e.nombre,
+      lisible: formater(e.total, e.devise),
+      // `null` le premier mois : rendre « +100 % » quand il n'y a rien à
+      // comparer serait inventer une histoire.
+      evolution: evolution(e.total, avant.get(e.devise) ?? 0),
+    })),
+
+    parFournisseur: parFournisseur.map((e) => ({
+      fournisseur: e.fournisseur,
+      devise: e.devise,
+      total: e.total,
+      nombre: e.nombre,
+      lisible: formater(e.total, e.devise),
+    })),
+
+    /**
+     * Le revenu récurrent, ramené au mois.
+     *
+     * Il compte les abonnements **qui ont accès** — actifs et en grâce — et
+     * pas les suspendus : les inclure gonflerait le chiffre exactement au
+     * moment où il devrait baisser. Voir `argent.ts`, qui porte l'arbitrage.
+     */
+    recurrentMensuel: recurrentMensuel(groupes).map((m) => ({
+      devise: m.devise,
+      total: m.total,
+      nombre: m.nombre,
+      lisible: formater(m.total, m.devise),
+    })),
+  });
 }

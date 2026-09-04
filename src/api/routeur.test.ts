@@ -586,3 +586,112 @@ describe("la santé du moteur, par l'API", () => {
     expect((await api(get("/sante", { entetes: {} }))).statut).toBe(401);
   });
 });
+
+describe("l'argent, par l'API", () => {
+  const argent = (sur: Partial<Tableau> = {}) => ({
+    ...fauxTableau([ligne()]).tableau,
+    async encaisse(depuis: Date) {
+      // La période courante commence il y a moins de 31 jours ; la précédente
+      // avant. C'est ce qui permet de distinguer les deux appels.
+      const recente = Date.now() - depuis.getTime() < 31 * 86_400_000;
+      return recente
+        ? [{ devise: "XOF", total: 216_800, nombre: 43 }]
+        : [{ devise: "XOF", total: 200_000, nombre: 40 }];
+    },
+    async recurrent() {
+      return [
+        { devise: "XOF", cadence: "MENSUEL", nombre: 38, total: 76_000 },
+        { devise: "XOF", cadence: "ANNUEL", nombre: 2, total: 40_000 },
+      ];
+    },
+    ...sur,
+  });
+
+  it("compare deux périodes, parce qu'un chiffre seul ne dit rien", async () => {
+    // « 214 000 F encaissés ce mois » ne dit ni si c'est bien ni si c'est
+    // inquiétant. C'est la comparaison qui parle.
+    const api = routeurApi({ tableau: argent() as Tableau, jeton: JETON });
+
+    const corps = lire((await api(get("/argent"))).corps);
+    const lignes = corps["encaisse"] as Record<string, unknown>[];
+
+    expect(lignes[0]!["total"]).toBe(216_800);
+    expect(lignes[0]!["nombre"]).toBe(43);
+    expect(lignes[0]!["evolution"]).toBe(8.4);
+  });
+
+  it("écrit le montant avec le bon nombre de décimales", async () => {
+    // Le franc CFA n'en a pas. Afficher « 216 800,00 » ferait douter du
+    // chiffre autant que de celui qui l'affiche.
+    const api = routeurApi({ tableau: argent() as Tableau, jeton: JETON });
+
+    const lignes = lire((await api(get("/argent"))).corps)["encaisse"] as Record<
+      string,
+      unknown
+    >[];
+
+    expect(String(lignes[0]!["lisible"])).not.toContain(",00");
+  });
+
+  it("ramène le récurrent au mois, toutes cadences confondues", async () => {
+    const api = routeurApi({ tableau: argent() as Tableau, jeton: JETON });
+
+    const lignes = lire((await api(get("/argent"))).corps)[
+      "recurrentMensuel"
+    ] as Record<string, unknown>[];
+
+    expect(lignes[0]!["nombre"]).toBe(40);
+    expect(lignes[0]!["total"]).toBe(76_000 + Math.round((40_000 * 30) / 365));
+  });
+
+  it("ventile par fournisseur quand l'hôte sait le faire", async () => {
+    const api = routeurApi({
+      tableau: argent({
+        async encaisseParFournisseur() {
+          return [
+            { fournisseur: "paystack", devise: "XOF", total: 150_000, nombre: 30 },
+            { fournisseur: "manuel", devise: "XOF", total: 66_800, nombre: 13 },
+          ];
+        },
+      }) as Tableau,
+      jeton: JETON,
+    });
+
+    const lignes = lire((await api(get("/argent"))).corps)[
+      "parFournisseur"
+    ] as Record<string, unknown>[];
+
+    expect(lignes.map((l) => l["fournisseur"])).toEqual(["paystack", "manuel"]);
+  });
+
+  it("laisse choisir la fenêtre, et la borne", async () => {
+    const api = routeurApi({ tableau: argent() as Tableau, jeton: JETON });
+
+    expect(
+      lire((await api(get("/argent", { parametres: { jours: "7" } }))).corps)["jours"],
+    ).toBe(7);
+    expect(
+      lire((await api(get("/argent", { parametres: { jours: "9999" } }))).corps)["jours"],
+    ).toBe(365);
+  });
+
+  it("répond 501 quand l'hôte ne tient pas de registre", async () => {
+    const f = fauxTableau([ligne()]);
+    const r = await routeurApi({ tableau: f.tableau, jeton: JETON })(get("/argent"));
+
+    expect(r.statut).toBe(501);
+  });
+
+  it("reste séparée de /resume, qu'on interroge bien plus souvent", async () => {
+    // `/resume` compte des abonnements : cinq requêtes indexées. L'argent
+    // somme sur la table des versements, qui grossit sans fin. Les mélanger
+    // ferait payer le prix du second à chaque affichage du premier.
+    const f = fauxTableau([ligne()]);
+    const api = routeurApi({ tableau: f.tableau, jeton: JETON });
+
+    const resume = lire((await api(get("/resume"))).corps);
+
+    expect(resume["encaisse"]).toBeUndefined();
+    expect(resume["recurrentMensuel"]).toBeUndefined();
+  });
+});

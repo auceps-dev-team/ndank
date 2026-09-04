@@ -1,4 +1,9 @@
-import { cleDeCycle, type Cadence, type Cycle } from "../cycle";
+import { cleDeCycle, jour, type Cadence, type Cycle } from "../cycle";
+import type {
+  Encaisse,
+  EncaisseParFournisseur,
+  Recurrent,
+} from "../argent";
 import type { AbonnementLu, Canal, Coordonnees, Ecriture, Lecture } from "../ports";
 import type { Creances, EtatCreance } from "../encaissement/reconciliation";
 import { CREANCE_VIERGE } from "../encaissement/reconciliation";
@@ -554,6 +559,92 @@ export function portsPrisma(
      * un fournisseur peut en rendre un qu'on traduit en `INCONNU` — et cinq
      * requêtes rendraient quatre zéros pour un chiffre qui manquerait.
      */
+    /**
+     * Ce qui est entré sur une période, par devise.
+     *
+     * Le filtre porte sur `compteLe` et non sur `etat` : un versement `REUSSI`
+     * mais jamais compté est un paiement qui n'a pas prolongé l'abonnement —
+     * un incident, pas une recette. L'inclure ferait afficher de l'argent dont
+     * personne n'a rien fait, et masquerait l'écart qu'on cherche justement
+     * quand un abonné dit avoir payé.
+     */
+    async encaisse(depuis: Date, jusqua: Date): Promise<readonly Encaisse[]> {
+      const groupes = await client.versement.groupBy({
+        by: ["devise"],
+        where: {
+          compteLe: { gte: depuis, lt: jusqua },
+          abonnement: { projetId },
+        },
+        _sum: { montant: true },
+        _count: { _all: true },
+      });
+
+      return groupes.map((g) => ({
+        devise: String(g["devise"] ?? ""),
+        total: Number(g._sum?.["montant"] ?? 0),
+        nombre: g._count._all,
+      }));
+    },
+
+    async encaisseParFournisseur(
+      depuis: Date,
+      jusqua: Date,
+    ): Promise<readonly EncaisseParFournisseur[]> {
+      const groupes = await client.versement.groupBy({
+        by: ["fournisseur", "devise"],
+        where: {
+          compteLe: { gte: depuis, lt: jusqua },
+          abonnement: { projetId },
+        },
+        _sum: { montant: true },
+        _count: { _all: true },
+      });
+
+      return groupes.map((g) => ({
+        fournisseur: String(g["fournisseur"] ?? ""),
+        devise: String(g["devise"] ?? ""),
+        total: Number(g._sum?.["montant"] ?? 0),
+        nombre: g._count._all,
+      }));
+    },
+
+    /**
+     * Les abonnements qui ont accès, groupés par devise et par cadence.
+     *
+     * ─────────────────────────────────────────────────────────────────────
+     * LE FILTRE EST CELUI DE L'ACCÈS, PAS CELUI DE L'ÉCHÉANCE
+     *
+     * `accesJusquA >= aujourd'hui`, ni résilié ni suspendu ni clos. Cela
+     * couvre d'un seul coup `ACTIVE` et `A_RENOUVELER` — les deux états où
+     * l'on sert quelqu'un et où l'on attend son prochain règlement.
+     *
+     * Un abonné dont l'échéance est passée mais dont la grâce court est donc
+     * compté : on le sert, on le relance, et il paiera probablement. Le sortir
+     * ferait chuter le revenu récurrent chaque fin de mois, puis remonter, sur
+     * des gens qui n'ont jamais cessé d'être abonnés.
+     */
+    async recurrent(maintenant: Date): Promise<readonly Recurrent[]> {
+      const groupes = await client.abonnement.groupBy({
+        by: ["devise", "cadence"],
+        where: {
+          projetId,
+          resilieeLe: null,
+          suspenduLe: null,
+          closLe: null,
+          accesJusquA: { gte: jour(maintenant) },
+        },
+        _sum: { montant: true },
+        _count: { _all: true },
+      });
+
+      return groupes.map((g) => ({
+        devise: String(g["devise"] ?? ""),
+        cadence: String(g["cadence"] ?? ""),
+        total: Number(g._sum?.["montant"] ?? 0),
+        nombre: g._count._all,
+      }));
+    },
+
     async compterVersements(
       depuis: Date,
     ): Promise<Readonly<Record<string, number>>> {
@@ -564,7 +655,7 @@ export function portsPrisma(
       });
 
       const comptes: Record<string, number> = {};
-      for (const g of groupes) comptes[g.etat] = g._count._all;
+      for (const g of groupes) comptes[String(g["etat"] ?? "")] = g._count._all;
 
       return comptes;
     },
