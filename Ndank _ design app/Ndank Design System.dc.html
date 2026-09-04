@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #f4f5f2; font-family: "Plus Jakarta Sans", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  a { color: #f4501f; text-decoration: none; }
+  a:hover { color: #c93d14; }
+</style>
+</helmet>
+
+<div style="max-width:1320px;margin:0 auto;padding:56px 40px 100px">
+
+  <header style="margin-bottom:56px">
+    <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.16em;color:#8d9298">SYSTÈME DE DESIGN</div>
+    <h1 style="margin:8px 0 0;font-size:44px;font-weight:800;letter-spacing:-.03em;color:#14161a">Ndank</h1>
+    <div style="margin-top:8px;font-size:15px;color:#6f7378;max-width:640px">Il rappelle, l'abonné valide. La palette et les composants qui portent cette idée sur les 13 écrans du produit.</div>
+  </header>
+
+  <!-- LOGO -->
+  <section style="margin-bottom:64px">
+    <div style="font-size:13px;font-weight:800;letter-spacing:.02em;color:#14161a;text-transform:uppercase;margin-bottom:6px">Logo — quatre pistes</div>
+    <div style="font-size:13px;color:#8d9298;margin-bottom:20px;max-width:600px">Un rappel discret, jamais une cloche de notification bruyante — cohérent avec « on rappelle, poliment, jusqu'à deux fois ».</div>
+
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px">
+
+      <div style="border:1px solid #e6e7e4;border-radius:20px;padding:24px;background:#fff;display:flex;flex-direction:column;align-items:center;gap:16px">
+        <div style="width:88px;height:88px;border-radius:24px;background:#14161a;display:flex;align-items:center;justify-content:center">
+          <div style="position:relative;width:34px;height:30px">
+            <div style="position:absolute;top:0;left:5px;width:24px;height:24px;border-radius:50% 50% 50% 4px;background:#f6d64a;transform:rotate(45deg)"></div>
+          </div>
+        </div>
+        <div style="text-align:center">
+          <div style="font-size:13.5px;font-weight:700;color:#14161a">A · Goutte-rappel</div>
+          <div style="font-size:11.5px;color:#8d9298;margin-top:3px">Une goutte inclinée, coin carré — le rappel qui arrive une fois, pas en boucle.</div>
+        </div>
+      </div>
+
+      <div style="border:1px solid #e6e7e4;border-radius:20px;padding:24px;background:#fff;display:flex;flex-direction:column;align-items:center;gap:16px">
+        <div style="width:88px;height:88px;border-radius:24px;background:#14161a;display:flex;align-items:center;justify-content:center">
+          <div style="width:30px;height:30px;border-radius:50%;border:5px solid #f6d64a;border-bottom-color:transparent;border-right-color:transparent;transform:rotate(45deg)"></div>
+        </div>
+        <div style="text-align:center">
+          <div style="font-size:13.5px;font-weight:700;color:#14161a">B · Anneau ouvert</div>
+          <div style="font-size:11.5px;color:#8d9298;margin-top:3px">Un cycle qui n'est jamais bouclé à 100 % — la grâce, l'ouverture entre échéance et coupure.</div>
+        </div>
+      </div>
+
+      <div style="border:1px solid #e6e7e4;border-radius:20px;padding:24px;background:#fff;display:flex;flex-direction:column;align-items:center;gap:16px">
+        <div style="width:88px;height:88px;border-radius:24px;background:#14161a;display:flex;align-items:center;justify-content:center;gap:5px">
+          <div style="width:9px;height:22px;border-radius:5px;background:#f6d64a"></div>
+          <div style="width:9px;height:32px;border-radius:5px;background:#d6c2fb"></div>
+          <div style="width:9px;height:16px;border-radius:5px;background:#bcdcf7"></div>
+        </div>
+        <div style="text-align:center">
+          <div style="font-size:13.5px;font-weight:700;color:#14161a">C · Paliers</div>
+          <div style="font-size:11.5px;color:#8d9298;margin-top:3px">Trois barres montantes — l'échelle qui monte en coût, J−7 à J+5.</div>
+        </div>
+      </div>
+
+      <div style="border:1px solid #e6e7e4;border-radius:20px;padding:24px;background:#fff;display:flex;flex-direction:column;align-items:center;gap:16px">
+        <div style="width:88px;height:88px;border-radius:24px;background:#14161a;display:flex;align-items:center;justify-content:center">
+          <div style="width:26px;height:26px;border-radius:8px;background:#f6d64a;position:relative">
+            <div style="position:absolute;top:-4px;right:-4px;width:14px;height:14px;border-radius:50%;background:#f4501f;border:3px solid #14161a"></div>
+          </div>
+        </div>
+        <div style="text-align:center">
+          <div style="font-size:13.5px;font-weight:700;color:#14161a">D · Carré à pastille</div>
+          <div style="font-size:11.5px;color:#8d9298;margin-top:3px">Un carré stable (l'accès), une pastille corail posée dessus — la relance qui vient s'ajouter, discrète.</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:20px;background:#fff;border:1px solid #e6e7e4;border-radius:16px;padding:18px 22px;display:flex;align-items:center;gap:14px">
+      <div style="width:34px;height:34px;border-radius:11px;background:#14161a;display:flex;align-items:center;justify-content:center;flex:0 0 34px">
+        <div style="width:22px;height:22px;border-radius:6px;background:#f6d64a;position:relative">
+          <div style="position:absolute;top:-3px;right:-3px;width:11px;height:11px;border-radius:50%;background:#f4501f;border:2px solid #14161a"></div>
+        </div>
+      </div>
+      <div style="font-size:19px;font-weight:800;letter-spacing:-.02em;color:#14161a">Ndank</div>
+      <div style="margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#8d9298">Piste D retenue par défaut dans l'app — modifiable</div>
+    </div>
+  </section>
+
+  <!-- COULEURS -->
+  <section style="margin-bottom:64px">
+    <div style="font-size:13px;font-weight:800;letter-spacing:.02em;color:#14161a;text-transform:uppercase;margin-bottom:16px">Couleurs</div>
+    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:12px">
+      <div>
+        <div style="height:88px;border-radius:14px;background:#14161a"></div>
+        <div style="margin-top:8px;font-size:12.5px;font-weight:700;color:#14161a">Encre</div>
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#8d9298">#14161a</div>
+      </div>
+      <div>
+        <div style="height:88px;border-radius:14px;background:#f4501f"></div>
+        <div style="margin-top:8px;font-size:12.5px;font-weight:700;color:#14161a">Corail · action</div>
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#8d9298">#f4501f</div>
+      </div>
+      <div>
+        <div style="height:88px;border-radius:14px;background:#fdf0b0"></div>
+        <div style="margin-top:8px;font-size:12.5px;font-weight:700;color:#14161a">Jaune · ACTIVE/repère</div>
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#8d9298">#fdf0b0</div>
+      </div>
+      <div>
+        <div style="height:88px;border-radius:14px;background:#d6c2fb"></div>
+        <div style="margin-top:8px;font-size:12.5px;font-weight:700;color:#14161a">Violet · A_RENOUVELER</div>
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#8d9298">#d6c2fb</div>
+      </div>
+      <div>
+        <div style="height:88px;border-radius:14px;background:#bcdcf7"></div>
+        <div style="margin-top:8px;font-size:12.5px;font-weight:700;color:#14161a">Bleu · SUSPENDUE</div>
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#8d9298">#bcdcf7</div>
+      </div>
+      <div>
+        <div style="height:88px;border-radius:14px;background:#f3f4f2;border:1px solid #e6e7e4"></div>
+        <div style="margin-top:8px;font-size:12.5px;font-weight:700;color:#14161a">Neutre · fond</div>
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#8d9298">#f3f4f2</div>
+      </div>
+    </div>
+    <div style="margin-top:12px;display:grid;grid-template-columns:repeat(6,1fr);gap:12px">
+      <div>
+        <div style="height:56px;border-radius:14px;background:#0f7a5a"></div>
+        <div style="margin-top:8px;font-size:12.5px;font-weight:700;color:#14161a">Succès · parti</div>
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#8d9298">#0f7a5a</div>
+      </div>
+      <div>
+        <div style="height:56px;border-radius:14px;background:#c93d14"></div>
+        <div style="margin-top:8px;font-size:12.5px;font-weight:700;color:#14161a">Échec · non parti</div>
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#8d9298">#c93d14</div>
+      </div>
+      <div>
+        <div style="height:56px;border-radius:14px;background:#fff;border:1px solid #e6e7e4"></div>
+        <div style="margin-top:8px;font-size:12.5px;font-weight:700;color:#14161a">Surface</div>
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#8d9298">#ffffff</div>
+      </div>
+      <div>
+        <div style="height:56px;border-radius:14px;background:#8d9298"></div>
+        <div style="margin-top:8px;font-size:12.5px;font-weight:700;color:#14161a">Texte secondaire</div>
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#8d9298">#8d9298</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TYPO -->
+  <section style="margin-bottom:64px">
+    <div style="font-size:13px;font-weight:800;letter-spacing:.02em;color:#14161a;text-transform:uppercase;margin-bottom:16px">Typographie</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div style="background:#fff;border:1px solid #e6e7e4;border-radius:16px;padding:22px 24px">
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.12em;color:#8d9298">TEXTE · PLUS JAKARTA SANS</div>
+        <div style="margin-top:14px;font-size:34px;font-weight:800;letter-spacing:-.03em;color:#14161a">Titre d'écran 34/800</div>
+        <div style="margin-top:8px;font-size:19px;font-weight:800;letter-spacing:-.02em;color:#14161a">Titre de carte 19/800</div>
+        <div style="margin-top:8px;font-size:15px;font-weight:700;color:#14161a">Corps fort 15/700</div>
+        <div style="margin-top:6px;font-size:13.5px;color:#6f7378">Corps 13.5/400 — pour les descriptions et le texte de contexte.</div>
+      </div>
+      <div style="background:#14161a;border-radius:16px;padding:22px 24px;color:#fff">
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.12em;color:#8d9298">CHIFFRES & DATES · IBM PLEX MONO</div>
+        <div style="margin-top:14px;font-family:'IBM Plex Mono',monospace;font-size:34px;font-weight:600;letter-spacing:-.02em">214 000</div>
+        <div style="margin-top:8px;font-family:'IBM Plex Mono',monospace;font-size:16px;font-weight:600">01 sept. · J+2</div>
+        <div style="margin-top:6px;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.1em;color:#8d9298">CLÉ 2026-09-01:2</div>
+        <div style="margin-top:16px;font-size:12px;color:#8d9298">Toute donnée qui doit s'aligner en colonne — montants, dates, états, clés — reste en mono. Le reste en Jakarta Sans.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- BOUTONS & CHAMPS -->
+  <section style="margin-bottom:64px">
+    <div style="font-size:13px;font-weight:800;letter-spacing:.02em;color:#14161a;text-transform:uppercase;margin-bottom:16px">Boutons & champs</div>
+    <div style="background:#fff;border:1px solid #e6e7e4;border-radius:16px;padding:26px">
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+        <div style="background:#f4501f;color:#fff;border-radius:13px;padding:13px 22px;font-size:13.5px;font-weight:700">Bouton primaire</div>
+        <div style="background:#14161a;color:#fff;border-radius:13px;padding:13px 22px;font-size:13.5px;font-weight:700">Bouton encre</div>
+        <div style="border:1px solid #e1e2e2;border-radius:13px;padding:13px 22px;font-size:13.5px;font-weight:700;color:#14161a">Bouton secondaire</div>
+        <div style="border:1px solid #e1e2e2;border-radius:13px;padding:13px 22px;font-size:13.5px;font-weight:700;color:#8d9298;opacity:.5">Désactivé</div>
+      </div>
+      <div style="margin-top:20px;display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <div>
+          <div style="font-size:12px;font-weight:700;color:#6f7378;margin-bottom:6px">Champ standard</div>
+          <div style="border:1px solid #e1e2e2;border-radius:12px;padding:12px 14px;font-size:13.5px;color:#14161a;background:#fff">Fatou Ndiaye</div>
+        </div>
+        <div>
+          <div style="font-size:12px;font-weight:700;color:#6f7378;margin-bottom:6px">Champ mono (montant, tél.)</div>
+          <div style="border:1px solid #e1e2e2;border-radius:12px;padding:12px 14px;font-family:'IBM Plex Mono',monospace;font-size:13.5px;color:#14161a;background:#fff">+221 77 812 44 09</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- BADGES D'ÉTAT -->
+  <section style="margin-bottom:64px">
+    <div style="font-size:13px;font-weight:800;letter-spacing:.02em;color:#14161a;text-transform:uppercase;margin-bottom:6px">Badges d'état</div>
+    <div style="font-size:13px;color:#8d9298;margin-bottom:16px;max-width:600px">Cinq états, jamais plus — dérivés des deux horloges, jamais stockés.</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <span style="padding:7px 13px;border-radius:9px;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.06em;background:#f3f4f2;color:#3f4348">ACTIVE</span>
+      <span style="padding:7px 13px;border-radius:9px;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.06em;background:#d6c2fb;color:#14161a">A_RENOUVELER</span>
+      <span style="padding:7px 13px;border-radius:9px;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.06em;background:#bcdcf7;color:#14161a">SUSPENDUE</span>
+      <span style="padding:7px 13px;border-radius:9px;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.06em;background:#14161a;color:#fff">EXPIREE</span>
+      <span style="padding:7px 13px;border-radius:9px;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.06em;background:#f3f4f2;color:#8d9298">RESILIEE</span>
+    </div>
+  </section>
+
+  <!-- CARTES & TABLEAUX -->
+  <section style="margin-bottom:64px">
+    <div style="font-size:13px;font-weight:800;letter-spacing:.02em;color:#14161a;text-transform:uppercase;margin-bottom:16px">Cartes & tableaux</div>
+    <div style="display:grid;grid-template-columns:1fr 1.4fr;gap:16px">
+      <div style="background:#fdf0b0;border-radius:20px;padding:20px 22px;min-height:150px;display:flex;flex-direction:column">
+        <div style="display:inline-flex;align-self:flex-start;background:#14161a;color:#fff;border-radius:8px;padding:4px 10px;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.08em">ACTIVE</div>
+        <div style="margin-top:12px;font-size:36px;font-weight:800;letter-spacing:-.03em;color:#14161a">38</div>
+        <div style="margin-top:auto;font-size:12.5px;font-weight:700;color:#14161a">Carte de statistique — fond de couleur, badge, gros chiffre.</div>
+      </div>
+      <div style="border:1px solid #e6e7e4;border-radius:20px;overflow:hidden">
+        <div style="display:grid;grid-template-columns:1.4fr .8fr .6fr;gap:10px;padding:12px 18px;background:#fafbfa;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.1em;color:#8d9298">
+          <div>ABONNÉ</div><div>ÉCHÉANCE</div><div>ÉTAT</div>
+        </div>
+        <div style="display:grid;grid-template-columns:1.4fr .8fr .6fr;gap:10px;align-items:center;padding:13px 18px;border-top:1px solid #f4f5f5">
+          <div style="font-size:13px;font-weight:700;color:#14161a">Fatou Ndiaye</div>
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#14161a">01 sept.</div>
+          <span style="display:inline-block;padding:5px 10px;border-radius:8px;font-family:'IBM Plex Mono',monospace;font-size:10px;background:#d6c2fb;color:#14161a">A_RENOUVELER</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1.4fr .8fr .6fr;gap:10px;align-items:center;padding:13px 18px;border-top:1px solid #f4f5f5">
+          <div style="font-size:13px;font-weight:700;color:#14161a">Moussa Diop</div>
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#14161a">12 sept.</div>
+          <span style="display:inline-block;padding:5px 10px;border-radius:8px;font-family:'IBM Plex Mono',monospace;font-size:10px;background:#f3f4f2;color:#3f4348">ACTIVE</span>
+        </div>
+        <div style="padding:10px 18px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#8d9298;border-top:1px solid #f4f5f5">Lignes : 13px/700 pour le nom, mono pour les dates, badge pour l'état — jamais l'inverse.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PASTILLES OPÉRATEURS -->
+  <section style="margin-bottom:64px">
+    <div style="font-size:13px;font-weight:800;letter-spacing:.02em;color:#14161a;text-transform:uppercase;margin-bottom:16px">Pastilles opérateurs</div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #e6e7e4;border-radius:13px;padding:10px 16px 10px 10px">
+        <div style="width:26px;height:26px;border-radius:8px;background:#14161a"></div>
+        <div style="font-size:12.5px;font-weight:700;color:#14161a">Wave</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #e6e7e4;border-radius:13px;padding:10px 16px 10px 10px">
+        <div style="width:26px;height:26px;border-radius:8px;background:#f4501f"></div>
+        <div style="font-size:12.5px;font-weight:700;color:#14161a">Orange Money</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #e6e7e4;border-radius:13px;padding:10px 16px 10px 10px">
+        <div style="width:26px;height:26px;border-radius:8px;background:#f6d64a"></div>
+        <div style="font-size:12.5px;font-weight:700;color:#14161a">MTN MoMo</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #e6e7e4;border-radius:13px;padding:10px 16px 10px 10px">
+        <div style="width:26px;height:26px;border-radius:8px;background:#bcdcf7"></div>
+        <div style="font-size:12.5px;font-weight:700;color:#14161a">Free Money</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #e6e7e4;border-radius:13px;padding:10px 16px 10px 10px">
+        <div style="width:26px;height:26px;border-radius:8px;background:#d6c2fb"></div>
+        <div style="font-size:12.5px;font-weight:700;color:#14161a">Moov Money</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #e6e7e4;border-radius:13px;padding:10px 16px 10px 10px">
+        <div style="width:26px;height:26px;border-radius:8px;background:#eceded"></div>
+        <div style="font-size:12.5px;font-weight:700;color:#14161a">Carte (secours)</div>
+      </div>
+    </div>
+    <div style="margin-top:10px;font-size:11.5px;color:#8d9298">Couleur d'identification propre à chaque opérateur, pas d'icône empruntée à leur marque.</div>
+  </section>
+
+  <!-- GRILLE & ESPACEMENTS -->
+  <section style="margin-bottom:64px">
+    <div style="font-size:13px;font-weight:800;letter-spacing:.02em;color:#14161a;text-transform:uppercase;margin-bottom:16px">Grille & espacements</div>
+    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:14px;align-items:end">
+      <div><div style="height:6px;width:6px;background:#14161a;border-radius:3px"></div><div style="margin-top:6px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#8d9298">6</div></div>
+      <div><div style="height:10px;width:10px;background:#14161a;border-radius:3px"></div><div style="margin-top:6px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#8d9298">10</div></div>
+      <div><div style="height:14px;width:14px;background:#14161a;border-radius:3px"></div><div style="margin-top:6px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#8d9298">14</div></div>
+      <div><div style="height:16px;width:16px;background:#14161a;border-radius:3px"></div><div style="margin-top:6px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#8d9298">16</div></div>
+      <div><div style="height:22px;width:22px;background:#14161a;border-radius:3px"></div><div style="margin-top:6px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#8d9298">22</div></div>
+      <div><div style="height:32px;width:32px;background:#14161a;border-radius:3px"></div><div style="margin-top:6px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#8d9298">32</div></div>
+    </div>
+    <div style="margin-top:16px;display:flex;gap:16px;font-size:12.5px;color:#6f7378">
+      <div>Rayon carte : <b style="color:#14161a">16–24px</b></div>
+      <div>Rayon badge/champ : <b style="color:#14161a">8–13px</b></div>
+      <div>Grille écrans : <b style="color:#14161a">colonnes 6 pour le cycle, 12 pour les tableaux</b></div>
+    </div>
+  </section>
+
+  <!-- MOBILE -->
+  <section>
+    <div style="font-size:13px;font-weight:800;letter-spacing:.02em;color:#14161a;text-transform:uppercase;margin-bottom:16px">Composants mobile</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div style="background:#fff;border:1px solid #e6e7e4;border-radius:16px;padding:20px 22px">
+        <div style="font-size:13.5px;font-weight:800;color:#14161a;margin-bottom:12px">Carte d'abonnement</div>
+        <div style="background:#d6c2fb;border-radius:16px;padding:14px 16px">
+          <span style="background:#14161a;color:#fff;border-radius:8px;padding:3px 9px;font-family:'IBM Plex Mono',monospace;font-size:9px">A_RENOUVELER</span>
+          <div style="margin-top:10px;font-size:15px;font-weight:800;color:#14161a">Atelier de couture</div>
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#4a3577">5 000 F / mois</div>
+        </div>
+        <div style="margin-top:10px;font-size:11.5px;color:#8d9298">Toujours : badge, titre, montant mono, deux dates.</div>
+      </div>
+      <div style="background:#fff;border:1px solid #e6e7e4;border-radius:16px;padding:20px 22px">
+        <div style="font-size:13.5px;font-weight:800;color:#14161a;margin-bottom:12px">Bouton plein écran (44px min.)</div>
+        <div style="background:#f4501f;color:#fff;border-radius:15px;min-height:52px;display:flex;align-items:center;justify-content:center;font-size:14.5px;font-weight:700">Renouveler · 5 000 F</div>
+        <div style="margin-top:10px;font-size:11.5px;color:#8d9298">Un seul bouton primaire visible à l'écran ; le reste en secondaire.</div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+</x-dc>
+</body>
+</html>
