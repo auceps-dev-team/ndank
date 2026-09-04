@@ -6,6 +6,85 @@ le reste.
 
 ---
 
+## 0.10.0
+
+Les quatre verbes que les maquettes portaient depuis le début. Deux d'entre eux
+ont révélé des défauts du cœur qu'aucun écran n'avait encore mis au jour.
+
+### Corrigé dans le cœur
+
+**Résilier n'est pas confisquer.** `accesOuvert` se contentait de lire l'état, et
+`etatDe` rend `RESILIEE` en premier — donc l'accès tombait à l'instant du clic.
+Un abonné qui résilie le 3 a payé jusqu'au 30 : lui couper le service alors,
+c'est garder son argent et lui retirer ce qu'il a acheté.
+
+Résilier veut dire deux choses, et deux seulement : plus de relance, plus de
+renouvellement. Les deux étaient déjà vraies ailleurs — `gesteDuJour` rend
+`RIEN` sur un résilié, et le lot du passage les écarte. Le temps déjà payé
+reste dû, **sans grâce au-delà** : la grâce existe pour laisser le temps de
+payer pendant qu'on relance, et on ne relance pas un résilié.
+
+**Suspendre à la main ne pouvait pas s'exprimer.** L'état se déduit des dates ;
+une suspension manuelle n'a aucune date qui la porte — un abonné à jour,
+suspendu pour un litige, a exactement les mêmes dates que la veille.
+
+D'où `suspenduLe`, **seule colonne d'état du schéma**. L'exception se justifie :
+ce que l'architecture refuse, ce sont les *conclusions* — une colonne `etat` qui
+se désynchroniserait le jour où un passage rate son tour. Ce qu'elle garde, ce
+sont les *faits*, et « le marchand a suspendu cet abonné le 4 septembre » en est
+un. Contrairement à la résiliation, elle coupe l'accès sur-le-champ : c'est sa
+raison d'être.
+
+### Ajouté
+
+**`ndank/intervention`** — `suspendre`, `retablir`, `resilier`, `marquerPaye`,
+`relancerMaintenant`.
+
+L'API du tableau de bord avait été conçue en lecture seule pour deux risques
+nommés : les erreurs de saisie et la corruption. Ces verbes les rouvrent, donc
+ils y répondent plutôt que de s'en remettre à la prudence de qui clique :
+
+- **rien ne s'écrit sans auteur.** Une base qu'on peut modifier sans laisser de
+  trace est une base dont on ne peut plus rien reconstituer ;
+- **un paiement manuel exige une pièce** — reçu, virement, bordereau. C'est le
+  geste le plus lourd du tableau de bord, le seul qui fasse apparaître un mois
+  d'abonnement sans qu'un franc ait bougé. La pièce le rend vérifiable après
+  coup, et **idempotent** : l'identifiant du versement en dérive ;
+- **une relance manuelle est bornée à une par jour.** Un bouton se clique cinq
+  fois quand rien ne semble se passer ; cinq SMS partent, ils sont facturés, et
+  l'abonné les reçoit tous.
+
+`marquerPaye` passe par `reconcilier`, comme un vrai paiement : même politique
+de règlement, même cumul des versements partiels, même contrôle de devise. Un
+chemin séparé aurait produit deux arithmétiques pour un seul fait, et c'est
+toujours la seconde qui se trompe. Il écrit le versement **avant** d'avancer le
+cycle — si la seconde écriture tombe, on rejoue ; l'inverse offrirait un mois.
+
+`relancerMaintenant` choisit le palier d'après l'échéance, jamais d'après le
+clic. Laisser choisir le canal aurait fait cliquer « SMS » par défaut — c'est
+celui dont on est sûr qu'il arrive — et rendu chaque relance payante.
+
+Aucun verbe ne lève sur un refus : « déjà suspendu », « reçu déjà enregistré »,
+« une relance est déjà partie aujourd'hui » sont des cas normaux.
+
+**`ndank/api/gestes`** expose les cinq verbes en HTTP, **sur une adresse et un
+jeton distincts de ceux du tableau de bord**. `routeurApi` reste en lecture
+seule, et la raison n'a pas changé : il sert une application cliente,
+distribuée, dont le jeton est extractible. Les mélanger aurait fait qu'un jeton
+volé dans une application Android donne le droit de marquer des abonnements
+comme payés.
+
+L'auteur arrive par l'en-tête `X-Ndank-Auteur`, posé par le serveur de l'hôte
+depuis sa session — jamais par le corps, où il serait déclaratif. Sans lui, on
+refuse d'écrire plutôt que de journaliser « inconnu ».
+
+**`portsPrisma` rend `interventions`.** La pièce justificative devient la clé
+d'idempotence du versement, via la même unicité que les opérateurs. Le journal
+des gestes porte l'horodatage dans sa clé et non le cycle : deux suspensions
+successives sont deux faits distincts — l'inverse du journal du moteur, où la
+clé de cycle sert à n'en garder qu'un.
+
+---
 ## 0.9.0
 
 Une erreur d'un facteur cent, trouvée en regardant un tableau de bord.
