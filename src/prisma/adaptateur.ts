@@ -2,7 +2,13 @@ import { cleDeCycle, type Cadence, type Cycle } from "../cycle";
 import type { AbonnementLu, Canal, Coordonnees, Ecriture, Lecture } from "../ports";
 import type { Creances, EtatCreance } from "../encaissement/reconciliation";
 import { CREANCE_VIERGE } from "../encaissement/reconciliation";
-import type { Bornes, LigneTableau, Page, Tableau } from "../api/tableau";
+import type {
+  Bornes,
+  LigneTableau,
+  LigneVersement,
+  Page,
+  Tableau,
+} from "../api/tableau";
 import type { DossierAbonnement } from "../dossier";
 import { grille, type Grille, type Offre } from "../offre";
 import type { NouvelAbonnement, Souscriptions } from "../souscription";
@@ -104,8 +110,34 @@ function ligneDe(l: LigneAbonnement): LigneTableau {
     repriseJusquA: l.repriseJusquA,
     resilieeLe: l.resilieeLe,
     closLe: l.closLe,
+    // Joint par `include`, quand la requête l'a demandé. On relance quelqu'un,
+    // pas un `cuid`.
+    ...(l.abonne
+      ? {
+          abonne: {
+            reference: l.abonne.reference,
+            nom: l.abonne.nom,
+            courriel: l.abonne.courriel,
+            telephone: l.abonne.telephone,
+          },
+        }
+      : {}),
   };
 }
+
+/**
+ * Ce que le tableau de bord joint à chaque abonnement.
+ *
+ * `select` et non `include` tout court : on ne veut ni les jetons d'appareil —
+ * ce sont des poignées opaques qui n'ont rien à faire dans un écran — ni les
+ * dates de création de l'abonné, qui n'y servent à rien. Ce qu'on ne demande
+ * pas ne traverse pas le réseau, et ne finit pas dans un journal.
+ */
+const AVEC_ABONNE = {
+  abonne: {
+    select: { reference: true, nom: true, courriel: true, telephone: true },
+  },
+} as const;
 
 /** Les cadences du schéma, ramenées à celles du cœur. */
 function cadenceDe(valeur: string): Cadence {
@@ -383,6 +415,7 @@ export function portsPrisma(
     async lister(bornes: Bornes, page: Page): Promise<readonly LigneTableau[]> {
       const lignes = await client.abonnement.findMany({
         where: ouSont(bornes, projetId),
+        include: AVEC_ABONNE,
         // Les plus urgents d'abord : même ordre que `aRelancer`, et pour la
         // même raison — quand on ne voit qu'une page, il faut que ce soit celle
         // qui demande une décision.
@@ -397,9 +430,64 @@ export function portsPrisma(
     async ligne(id: string): Promise<LigneTableau | null> {
       const ligne = await client.abonnement.findFirst({
         where: { id, projetId },
+        include: AVEC_ABONNE,
       });
 
       return ligne === null ? null : ligneDe(ligne);
+    },
+
+    /**
+     * Les versements d'un abonnement, les plus récents d'abord.
+     *
+     * Par `creeLe` et non par `regleLe` : un versement jamais réglé n'a pas de
+     * seconde date, et trier dessus le ferait disparaître de la liste — alors
+     * que c'est précisément celui qu'on cherche quand un abonné dit avoir payé.
+     */
+    async versements(
+      abonnementId: string,
+      page: Page,
+    ): Promise<readonly LigneVersement[]> {
+      const lignes = await client.versement.findMany({
+        where: { abonnementId, abonnement: { projetId } },
+        orderBy: { creeLe: "desc" },
+        skip: page.depuis,
+        take: page.combien,
+      });
+
+      return lignes.map((v) => ({
+        id: v.id,
+        abonnementId: v.abonnementId,
+        fournisseur: v.fournisseur,
+        reference: v.reference,
+        montant: v.montant,
+        devise: v.devise,
+        etat: v.etat,
+        regleLe: v.regleLe,
+        compteLe: v.compteLe,
+        creeLe: v.creeLe,
+      }));
+    },
+
+    /**
+     * Combien de versements par état depuis cette date.
+     *
+     * `groupBy` et non cinq `count` : les états ne sont pas connus d'avance —
+     * un fournisseur peut en rendre un qu'on traduit en `INCONNU` — et cinq
+     * requêtes rendraient quatre zéros pour un chiffre qui manquerait.
+     */
+    async compterVersements(
+      depuis: Date,
+    ): Promise<Readonly<Record<string, number>>> {
+      const groupes = await client.versement.groupBy({
+        by: ["etat"],
+        where: { creeLe: { gte: depuis }, abonnement: { projetId } },
+        _count: { _all: true },
+      });
+
+      const comptes: Record<string, number> = {};
+      for (const g of groupes) comptes[g.etat] = g._count._all;
+
+      return comptes;
     },
   };
 

@@ -1,9 +1,15 @@
 import { timingSafeEqual } from "node:crypto";
 
-import { joursEntre } from "../cycle";
+import { ajouterJours, joursEntre } from "../cycle";
 import { etatDe, type Etat } from "../etats";
 import type { ReponseWeb, RequeteWeb } from "../web";
-import { bornesDe, type LigneTableau, type Tableau } from "./tableau";
+import { offresActives, type Grille } from "../offre";
+import {
+  bornesDe,
+  type LigneTableau,
+  type LigneVersement,
+  type Tableau,
+} from "./tableau";
 
 /**
  * Ndank — l'API que le tableau de bord consomme.
@@ -53,6 +59,25 @@ const ETATS: readonly Etat[] = [
 
 export interface ReglagesApi {
   tableau: Tableau;
+  /**
+   * La grille tarifaire, quand l'hôte veut l'exposer. Facultatif.
+   *
+   * `portsPrisma(...).offres` la fournit telle quelle. Un hôte du niveau 1 qui
+   * déclare sa grille en code passe `async () => GRILLE`.
+   *
+   * Elle est **publique pour qui tient le jeton**, mais elle ne contient rien
+   * de personnel : ce sont les prix affichés. La route existe pour qu'un
+   * tableau de bord montre ce qu'on vend sans le recopier — un tarif recopié
+   * ailleurs finit par diverger de celui qu'on facture.
+   */
+  offres?: () => Promise<Grille>;
+  /**
+   * Sur combien de jours compter les versements du résumé.
+   *
+   * Trente par défaut : un mois, soit un cycle complet pour la cadence la plus
+   * répandue. Sur sept jours, un taux d'échec ne se distingue pas du hasard.
+   */
+  fenetreVersements?: number;
   /**
    * Le jeton que le tableau de bord présente.
    *
@@ -131,6 +156,30 @@ function versJson(
     joursRestants: joursEntre(maintenant, ligne.accesJusquA),
     resilieeLe: ligne.resilieeLe?.toISOString() ?? null,
     closLe: ligne.closLe?.toISOString() ?? null,
+    // Absent quand l'implémentation ne joint pas l'abonné. Un tableau de bord
+    // qui n'affiche que des identifiants est inutilisable : on relance
+    // quelqu'un, pas un `cuid`.
+    abonne: ligne.abonne ?? null,
+  };
+}
+
+/** Un versement, tel que le tableau de bord le reçoit. */
+function versementJson(v: LigneVersement): Record<string, unknown> {
+  return {
+    id: v.id,
+    abonnementId: v.abonnementId,
+    fournisseur: v.fournisseur,
+    reference: v.reference,
+    montant: v.montant,
+    devise: v.devise,
+    etat: v.etat,
+    regleLe: v.regleLe?.toISOString() ?? null,
+    compteLe: v.compteLe?.toISOString() ?? null,
+    creeLe: v.creeLe.toISOString(),
+    // La nuance qui fait comprendre un écart : un versement réglé mais jamais
+    // compté est un paiement qui n'a pas prolongé l'abonnement. C'est
+    // exactement ce qu'on cherche quand un abonné dit avoir payé.
+    regleNonCompte: v.regleLe !== null && v.compteLe === null,
   };
 }
 
@@ -190,7 +239,40 @@ export function routeurApi(
     const maintenant = new Date();
 
     if (morceaux[0] === "resume" && morceaux.length === 1) {
-      return rendre(json(200, await resume(reglages.tableau, maintenant)));
+      return rendre(json(200, await resume(reglages, maintenant)));
+    }
+
+    if (morceaux[0] === "offres" && morceaux.length === 1) {
+      if (!reglages.offres) {
+        // 501 et non 404 : la route existe, l'hôte ne l'a simplement pas
+        // branchée. Un 404 ferait chercher une faute de frappe dans l'URL.
+        return rendre(
+          json(501, {
+            erreur:
+              "Cet hôte n'expose pas sa grille tarifaire. " +
+              "Passez `offres` à `routeurApi`.",
+          }),
+        );
+      }
+
+      const grille = await reglages.offres();
+      const toutes = requete.parametres["toutes"] === "1";
+
+      return rendre(
+        json(200, {
+          // Par défaut, seulement ce qu'on propose aujourd'hui. Une offre
+          // retirée reste dans la grille — des abonnements en cours la
+          // référencent — mais l'afficher ferait vendre ce qu'on ne vend plus.
+          offres: (toutes ? grille : offresActives(grille)).map((o) => ({
+            id: o.id,
+            libelle: o.libelle,
+            montant: o.montant,
+            devise: o.devise,
+            cadence: o.cadence,
+            actif: o.actif !== false,
+          })),
+        }),
+      );
     }
 
     if (morceaux[0] === "abonnements" && morceaux.length === 1) {
@@ -207,7 +289,51 @@ export function routeurApi(
       return rendre(json(200, versJson(ligne, maintenant)));
     }
 
+    if (
+      morceaux[0] === "abonnements" &&
+      morceaux.length === 3 &&
+      morceaux[2] === "versements"
+    ) {
+      if (!reglages.tableau.versements) {
+        return rendre(
+          json(501, {
+            erreur:
+              "Cet hôte ne tient pas de registre de versements. " +
+              "Implémentez `Tableau.versements`.",
+          }),
+        );
+      }
+
+      // On vérifie que l'abonnement existe avant de lister ses versements :
+      // sinon un identifiant inventé rendrait une liste vide, indiscernable
+      // d'un abonnement qui n'a jamais payé.
+      const ligne = await reglages.tableau.ligne(morceaux[1]!);
+      if (ligne === null) {
+        return rendre(json(404, { erreur: "Abonnement introuvable." }));
+      }
+
+      const lignes = await reglages.tableau.versements(
+        morceaux[1]!,
+        pageDe(requete),
+      );
+
+      return rendre(
+        json(200, { lignes: lignes.map(versementJson) }),
+      );
+    }
+
     return rendre(json(404, { erreur: "Route inconnue." }));
+  };
+}
+
+/** Les bornes de page d'une requête, toujours plafonnées. */
+function pageDe(requete: RequeteWeb): { depuis: number; combien: number } {
+  return {
+    depuis: Math.max(0, entier(requete.parametres["depuis"], 0)),
+    combien: Math.min(
+      PAR_PAGE_MAX,
+      Math.max(1, entier(requete.parametres["combien"], PAR_PAGE_DEFAUT)),
+    ),
   };
 }
 
@@ -220,16 +346,38 @@ export function routeurApi(
  * mille abonnés.
  */
 async function resume(
-  tableau: Tableau,
+  reglages: ReglagesApi,
   maintenant: Date,
 ): Promise<Record<string, unknown>> {
   const comptes: Record<string, number> = {};
 
   for (const etat of ETATS) {
-    comptes[etat] = await tableau.compter(bornesDe(etat, maintenant));
+    comptes[etat] = await reglages.tableau.compter(bornesDe(etat, maintenant));
   }
 
   const actifs = (comptes["ACTIVE"] ?? 0) + (comptes["A_RENOUVELER"] ?? 0);
+  const jours = reglages.fenetreVersements ?? 30;
+  const depuis = ajouterJours(maintenant, -jours);
+
+  /**
+   * Les paiements de la période, par état.
+   *
+   * ────────────────────────────────────────────────────────────────────────
+   * C'EST LE TAUX D'ÉCHEC QU'ON VIENT CHERCHER ICI
+   *
+   * Pris isolément, un versement échoué ressemble à un abonné qui a changé
+   * d'avis — et l'on n'y regarde pas. C'est leur proportion qui parle : un
+   * taux qui monte veut dire une passerelle en difficulté, un opérateur en
+   * panne, ou une clé qui a expiré. Aucun de ces trois ne se signale
+   * autrement.
+   */
+  const versements = reglages.tableau.compterVersements
+    ? await reglages.tableau.compterVersements(depuis)
+    : null;
+
+  const reussis = versements?.["REUSSI"] ?? 0;
+  const echoues = (versements?.["ECHOUE"] ?? 0) + (versements?.["EXPIRE"] ?? 0);
+  const conclus = reussis + echoues;
 
   return {
     calculeLe: maintenant.toISOString(),
@@ -238,6 +386,19 @@ async function resume(
     actifs,
     /** Ceux qu'il faut aller chercher : la grâce court encore. */
     aRattraper: (comptes["A_RENOUVELER"] ?? 0) + (comptes["SUSPENDUE"] ?? 0),
+    versements:
+      versements === null
+        ? null
+        : {
+            depuis: depuis.toISOString(),
+            jours,
+            parEtat: versements,
+            reussis,
+            echoues,
+            // `null` et non zéro quand rien n'a encore été conclu : un taux de
+            // 0 % sur zéro paiement ferait croire à une panne totale.
+            tauxDeReussite: conclus === 0 ? null : reussis / conclus,
+          },
   };
 }
 
@@ -264,11 +425,7 @@ async function lister(
       ? { resiliee: false, close: false }
       : bornesDe(demande as Etat, maintenant);
 
-  const depuis = Math.max(0, entier(requete.parametres["depuis"], 0));
-  const combien = Math.min(
-    PAR_PAGE_MAX,
-    Math.max(1, entier(requete.parametres["combien"], PAR_PAGE_DEFAUT)),
-  );
+  const { depuis, combien } = pageDe(requete);
 
   const [total, lignes] = await Promise.all([
     reglages.tableau.compter(bornes),

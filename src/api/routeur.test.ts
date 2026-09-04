@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { ajouterJours, cycleApresPaiement, jour } from "../cycle";
 import { etatDe, PREAVIS_JOURS, type Etat } from "../etats";
 import type { RequeteWeb } from "../web";
+import { grille } from "../offre";
 import { routeurApi } from "./routeur";
 import { bornesDe, type Bornes, type LigneTableau, type Tableau } from "./tableau";
 
@@ -319,3 +320,174 @@ function deCycle(paiement: Date): Pick<
     repriseJusquA: c.repriseJusquA,
   };
 }
+
+describe("la grille tarifaire, par l'API", () => {
+  it("ne montre que ce qu'on propose aujourd'hui", async () => {
+    // Une offre retirée reste dans la grille — des abonnements en cours la
+    // référencent — mais l'afficher ferait vendre ce qu'on ne vend plus.
+    const f = fauxTableau([]);
+    const api = routeurApi({
+      tableau: f.tableau,
+      jeton: JETON,
+      offres: async () =>
+        grille([
+          { id: "a", libelle: "Pass", montant: 2000, devise: "XOF", cadence: "MENSUEL" },
+          { id: "b", libelle: "Vieux", montant: 500, devise: "XOF", cadence: "MENSUEL", actif: false },
+        ]),
+    });
+
+    const visibles = lire((await api(get("/offres"))).corps);
+    expect((visibles["offres"] as unknown[]).length).toBe(1);
+
+    const toutes = lire(
+      (await api(get("/offres", { parametres: { toutes: "1" } }))).corps,
+    );
+    expect((toutes["offres"] as unknown[]).length).toBe(2);
+  });
+
+  it("répond 501 quand l'hôte ne l'a pas branchée, et non 404", async () => {
+    // Un 404 ferait chercher une faute de frappe dans l'URL. La route existe.
+    const f = fauxTableau([]);
+    const r = await routeurApi({ tableau: f.tableau, jeton: JETON })(get("/offres"));
+
+    expect(r.statut).toBe(501);
+    expect(String(lire(r.corps)["erreur"])).toContain("offres");
+  });
+});
+
+describe("les versements, par l'API", () => {
+  const V = {
+    id: "v1",
+    abonnementId: "ab-1",
+    fournisseur: "paystack",
+    reference: "20260209-1-ab-1",
+    montant: 2000,
+    devise: "XOF",
+    etat: "REUSSI",
+    regleLe: MAINTENANT,
+    compteLe: null,
+    creeLe: MAINTENANT,
+  };
+
+  it("signale un versement réglé mais jamais compté", async () => {
+    // C'est exactement ce qu'on cherche quand un abonné dit avoir payé : le
+    // paiement a eu lieu, l'abonnement n'a pas avancé.
+    const f = fauxTableau([ligne()]);
+    const api = routeurApi({
+      tableau: { ...f.tableau, versements: async () => [V] },
+      jeton: JETON,
+    });
+
+    const corps = lire((await api(get("/abonnements/ab-1/versements"))).corps);
+    const lignes = corps["lignes"] as Record<string, unknown>[];
+
+    expect(lignes[0]!["regleNonCompte"]).toBe(true);
+  });
+
+  it("distingue un abonnement inconnu d'un abonnement sans versement", async () => {
+    // Sans cette vérification, un identifiant inventé rendrait une liste vide,
+    // indiscernable d'un abonné qui n'a jamais payé.
+    const f = fauxTableau([ligne()]);
+    const api = routeurApi({
+      tableau: { ...f.tableau, versements: async () => [] },
+      jeton: JETON,
+    });
+
+    expect((await api(get("/abonnements/ab-999/versements"))).statut).toBe(404);
+    expect((await api(get("/abonnements/ab-1/versements"))).statut).toBe(200);
+  });
+
+  it("répond 501 quand l'hôte ne tient pas de registre", async () => {
+    // Un hôte du niveau 1 peut ne garder que des abonnements et laisser les
+    // paiements chez son fournisseur. L'exiger l'obligerait à écrire une
+    // méthode qui rend un tableau vide, c'est-à-dire à mentir.
+    const f = fauxTableau([ligne()]);
+    const r = await routeurApi({ tableau: f.tableau, jeton: JETON })(
+      get("/abonnements/ab-1/versements"),
+    );
+
+    expect(r.statut).toBe(501);
+  });
+});
+
+describe("le résumé enrichi", () => {
+  it("rend le taux de réussite des paiements de la période", async () => {
+    // Pris isolément, un versement échoué ressemble à un abonné qui a changé
+    // d'avis. C'est leur proportion qui parle.
+    const f = fauxTableau([ligne()]);
+    const api = routeurApi({
+      tableau: {
+        ...f.tableau,
+        compterVersements: async () => ({ REUSSI: 8, ECHOUE: 2 }),
+      },
+      jeton: JETON,
+    });
+
+    const v = lire((await api(get("/resume"))).corps)["versements"] as Record<
+      string,
+      unknown
+    >;
+
+    expect(v["reussis"]).toBe(8);
+    expect(v["echoues"]).toBe(2);
+    expect(v["tauxDeReussite"]).toBeCloseTo(0.8, 5);
+    expect(v["jours"]).toBe(30);
+  });
+
+  it("rend null plutôt que zéro quand rien n'a encore été conclu", async () => {
+    // Un taux de 0 % sur zéro paiement ferait croire à une panne totale.
+    const f = fauxTableau([ligne()]);
+    const api = routeurApi({
+      tableau: { ...f.tableau, compterVersements: async () => ({}) },
+      jeton: JETON,
+    });
+
+    const v = lire((await api(get("/resume"))).corps)["versements"] as Record<
+      string,
+      unknown
+    >;
+
+    expect(v["tauxDeReussite"]).toBeNull();
+  });
+
+  it("omet la section quand l'hôte ne compte pas les versements", async () => {
+    const f = fauxTableau([ligne()]);
+    const api = routeurApi({ tableau: f.tableau, jeton: JETON });
+
+    expect(lire((await api(get("/resume"))).corps)["versements"]).toBeNull();
+  });
+});
+
+describe("les coordonnées de l'abonné", () => {
+  it("voyagent avec la liste, parce qu'on relance quelqu'un", async () => {
+    const f = fauxTableau([
+      ligne({
+        abonne: {
+          reference: "usr-1",
+          nom: "Awa",
+          courriel: "awa@ndank.test",
+          telephone: "+2250700000000",
+        },
+      }),
+    ]);
+
+    const api = routeurApi({ tableau: f.tableau, jeton: JETON });
+    const corps = lire((await api(get("/abonnements"))).corps);
+    const lignes = corps["lignes"] as Record<string, unknown>[];
+
+    expect(lignes[0]!["abonne"]).toEqual({
+      reference: "usr-1",
+      nom: "Awa",
+      courriel: "awa@ndank.test",
+      telephone: "+2250700000000",
+    });
+  });
+
+  it("valent null quand l'implémentation ne les joint pas", async () => {
+    const f = fauxTableau([ligne()]);
+    const api = routeurApi({ tableau: f.tableau, jeton: JETON });
+    const corps = lire((await api(get("/abonnements"))).corps);
+
+    expect((corps["lignes"] as Record<string, unknown>[])[0]!["abonne"]).toBeNull();
+  });
+});

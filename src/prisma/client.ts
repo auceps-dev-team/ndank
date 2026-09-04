@@ -48,7 +48,21 @@ export interface LigneAbonnement {
   verse: number;
   joursAccordes: number;
   versements: number;
+  /**
+   * L'abonné, quand la requête l'a joint.
+   *
+   * Facultatif : le passage quotidien ne le joint pas — il n'en a pas besoin,
+   * et joindre une table pour cinq cents lignes chaque matin coûte pour rien.
+   * Le tableau de bord, lui, le demande.
+   */
+  abonne?: {
+    reference: string;
+    nom: string | null;
+    courriel: string | null;
+    telephone: string | null;
+  } | null;
 }
+
 
 /** Une ligne `abonne`. */
 export interface LigneAbonne {
@@ -74,9 +88,51 @@ export interface LigneRelance {
   cle: string;
 }
 
-/** Une ligne `versement`, réduite à ce qui sert. */
+/**
+ * Une ligne `versement`, décrite entière.
+ *
+ * ────────────────────────────────────────────────────────────────────────────
+ * ELLE EST DÉCRITE ENTIÈRE, MÊME QUAND ON N'EN DEMANDE QU'UN CHAMP
+ *
+ * `dejaCompte` interroge avec `select: { id: true }` : cette question-là est
+ * posée à chaque webhook, et charger la ligne entière pour répondre « oui » ou
+ * « non » serait du gâchis à l'échelle d'un rejeu de soixante-douze heures. La
+ * ligne qui revient alors n'a qu'un champ.
+ *
+ * On ne le reflète pas dans le type, et c'est le même partage que pour les
+ * arguments : le typer par `select` demanderait de reproduire l'inférence de
+ * Prisma, donc d'en dépendre. Les rendre tous facultatifs, à l'inverse,
+ * obligerait chaque lecture à composer avec des `undefined` qui n'arrivent
+ * jamais.
+ */
 export interface LigneVersement {
   id: string;
+  abonnementId: string;
+  fournisseur: string;
+  reference: string;
+  montant: number;
+  devise: string;
+  etat: string;
+  regleLe: Date | null;
+  compteLe: Date | null;
+  creeLe: Date;
+}
+
+/** Ce que `groupBy` rend quand on compte les versements par état. */
+export interface GroupeVersement {
+  etat: string;
+  _count: { _all: number };
+}
+
+/**
+ * Le délégué `versement`, qui sait en plus regrouper.
+ *
+ * `groupBy` ne rentre pas dans `Delegue<Ligne>` : il ne rend pas des lignes,
+ * il rend des agrégats. Le décrire à part vaut mieux que d'élargir `Delegue`
+ * pour tous les autres, qui n'en ont pas besoin.
+ */
+export interface DelegueVersement extends Delegue<LigneVersement> {
+  groupBy(args: Args): Promise<GroupeVersement[]>;
 }
 
 /**
@@ -120,6 +176,6 @@ export interface ClientNdank {
   abonne: Delegue<LigneAbonne>;
   offre: Delegue<LigneOffre>;
   relance: Delegue<LigneRelance>;
-  versement: Delegue<LigneVersement>;
+  versement: DelegueVersement;
   evenement: Delegue<{ id: string }>;
 }

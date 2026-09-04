@@ -111,6 +111,56 @@ export interface LigneTableau {
   repriseJusquA: Date;
   resilieeLe: Date | null;
   closLe: Date | null;
+
+  /**
+   * Qui est l'abonné. Absent si l'implémentation ne le joint pas.
+   *
+   * ═══════════════════════════════════════════════════════════════════════
+   * IL EST DANS LA LISTE, ET PAS SEULEMENT DANS LE DÉTAIL
+   *
+   * On aurait pu le réserver au détail d'un abonnement, en se disant qu'un
+   * fichier d'abonnés ne devrait pas transiter à chaque ouverture d'écran.
+   * Ce serait un réconfort et non une protection : le jeton donne accès aux
+   * deux routes, donc quiconque peut lire le détail peut le lire cent fois.
+   *
+   * Ce qui protège vraiment, c'est le jeton — et le fait que rien ici
+   * n'écrive. Le reste relève de ce que l'hôte fait de sa réponse : elle part
+   * avec `Cache-Control: no-store` et ne doit pas finir dans un journal.
+   *
+   * Un tableau de bord qui n'affiche que des identifiants est inutilisable :
+   * on relance quelqu'un, pas un `cuid`.
+   */
+  abonne?: {
+    /** L'identifiant que l'hôte lui donne chez lui. */
+    reference: string;
+    nom: string | null;
+    courriel: string | null;
+    telephone: string | null;
+  };
+}
+
+/** Un versement, tel que le tableau de bord le lit. */
+export interface LigneVersement {
+  id: string;
+  abonnementId: string;
+  fournisseur: string;
+  reference: string;
+  montant: number;
+  devise: string;
+  /** L'état chez le fournisseur : REUSSI, ECHOUE, EN_ATTENTE, EXPIRE, INCONNU. */
+  etat: string;
+  /** Quand le fournisseur dit l'avoir réglé. */
+  regleLe: Date | null;
+  /**
+   * Quand Ndank l'a **compté**.
+   *
+   * Distinct de `regleLe`, et la nuance est celle qui fait comprendre un
+   * écart : un versement réglé mais jamais compté est un paiement qui n'a
+   * pas prolongé l'abonnement. C'est exactement ce qu'on cherche quand un
+   * abonné dit avoir payé.
+   */
+  compteLe: Date | null;
+  creeLe: Date;
 }
 
 export interface Page {
@@ -153,4 +203,34 @@ export interface Tableau {
 
   /** Un abonnement précis, ou `null`. */
   ligne(id: string): Promise<LigneTableau | null>;
+
+  /**
+   * Les versements d'un abonnement, les plus récents d'abord. Facultatif.
+   *
+   * ═══════════════════════════════════════════════════════════════════════
+   * FACULTATIF, PARCE QUE TOUS LES HÔTES NE TIENNENT PAS DE REGISTRE
+   *
+   * Un hôte du niveau 1 implémente `Tableau` contre sa propre base. Il peut
+   * très bien n'y garder que des abonnements, et laisser les paiements chez
+   * son fournisseur — c'est un choix défendable, puisque Ndank ne touche
+   * jamais l'argent.
+   *
+   * L'exiger l'obligerait à écrire une méthode qui rend un tableau vide,
+   * c'est-à-dire à mentir. La route répond alors qu'elle n'est pas servie,
+   * ce qui est la vérité.
+   */
+  versements?(
+    abonnementId: string,
+    page: Page,
+  ): Promise<readonly LigneVersement[]>;
+
+  /**
+   * Combien de versements par état depuis cette date. Facultatif.
+   *
+   * C'est le chiffre que réclame un tableau de bord : combien de paiements
+   * ont réussi, combien ont échoué. Un taux d'échec qui monte se voit là, et
+   * nulle part ailleurs — chaque échec pris isolément ressemble à un abonné
+   * qui a changé d'avis.
+   */
+  compterVersements?(depuis: Date): Promise<Readonly<Record<string, number>>>;
 }

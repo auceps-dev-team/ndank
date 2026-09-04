@@ -12,6 +12,7 @@ import type {
   LigneAbonne,
   LigneAbonnement,
   LigneOffre,
+  LigneVersement,
 } from "./client";
 
 const DEPART = new Date("2026-01-10T00:00:00Z");
@@ -32,7 +33,8 @@ function fauxClient(
   const appels: Array<{ table: string; methode: string; args: any }> = [];
   const relances = new Map<string, { canaux: string[] }>();
   const evenements = new Map<string, unknown>();
-  const versements: Array<{ id: string; identifiantFournisseur: string; compteLe: Date | null }> = [];
+  const versements: Array<LigneVersement & { identifiantFournisseur: string }> =
+    [];
   const abonnes = new Map<string, LigneAbonne>();
 
   const noter = (table: string, methode: string, args: any) => {
@@ -218,6 +220,14 @@ function fauxClient(
       async count() {
         return 0;
       },
+      async groupBy(args) {
+        noter("versement", "groupBy", args);
+        const comptes = new Map<string, number>();
+        for (const v of versements) {
+          comptes.set(v.etat, (comptes.get(v.etat) ?? 0) + 1);
+        }
+        return [...comptes].map(([etat, n]) => ({ etat, _count: { _all: n } }));
+      },
       async findFirst(args) {
         noter("versement", "findFirst", args);
         const w = args?.where ?? {};
@@ -226,10 +236,15 @@ function fauxClient(
             v.identifiantFournisseur === w.identifiantFournisseur &&
             (w.compteLe?.not === null ? v.compteLe !== null : true),
         );
-        return t ? { id: t.id } : null;
+        // `dejaCompte` interroge avec `select: { id: true }` : la ligne qui
+        // revient n'a bien qu'un champ, et c'est ce que le vrai client rend.
+        return t ? ({ id: t.id } as LigneVersement) : null;
       },
-      async findMany() {
-        return [];
+      async findMany(args) {
+        noter("versement", "findMany", args);
+        return versements
+          .filter((v) => v.abonnementId === args?.where?.abonnementId)
+          .slice(args?.skip ?? 0, (args?.skip ?? 0) + (args?.take ?? 25));
       },
       async findUnique() {
         return null;
@@ -504,8 +519,10 @@ describe("les créances", () => {
     // Une invitation crée un versement EN_ATTENTE bien avant qu'il ne compte.
     // Confondre les deux ferait ignorer le paiement au moment où il arrive.
     const f = fauxClient([ligne()]);
-    f.versements.push({ id: "v1", identifiantFournisseur: "chg_1", compteLe: null });
-    f.versements.push({ id: "v2", identifiantFournisseur: "chg_2", compteLe: DEPART });
+    f.versements.push(versement({ id: "v1", identifiantFournisseur: "chg_1" }));
+    f.versements.push(
+      versement({ id: "v2", identifiantFournisseur: "chg_2", compteLe: DEPART }),
+    );
 
     const c = portsPrisma(f.client, { projetId: PROJET }).creances;
 
@@ -826,5 +843,88 @@ describe("la grille lue en base", () => {
 
     const appel = f.appels.find((a) => a.table === "offre")!;
     expect(appel.args.where.projetId).toBe(PROJET);
+  });
+});
+
+/** Un versement en mémoire, avec l'identifiant fournisseur que le faux indexe. */
+function versement(
+  sur: Partial<LigneVersement> & { identifiantFournisseur: string },
+): LigneVersement & { identifiantFournisseur: string } {
+  return {
+    id: "v-1",
+    abonnementId: "abo-1",
+    fournisseur: "paystack",
+    reference: "20260209-1-abo-1",
+    montant: 2000,
+    devise: "XOF",
+    etat: "REUSSI",
+    regleLe: DEPART,
+    compteLe: null,
+    creeLe: DEPART,
+    ...sur,
+  };
+}
+
+describe("les versements, pour le tableau de bord", () => {
+  it("les rend du plus récent au plus ancien, par date de création", async () => {
+    // Par `creeLe` et non `regleLe` : un versement jamais réglé n'a pas de
+    // seconde date, et trier dessus le ferait disparaître — alors que c'est
+    // précisément celui qu'on cherche quand un abonné dit avoir payé.
+    const f = fauxClient([ligne({ id: "abo-1" })]);
+    f.versements.push(versement({ id: "v1", identifiantFournisseur: "c1" }));
+
+    const p = portsPrisma(f.client, { projetId: PROJET });
+    const lignes = await p.tableau.versements!("abo-1", { depuis: 0, combien: 10 });
+
+    expect(lignes).toHaveLength(1);
+    expect(lignes[0]!.etat).toBe("REUSSI");
+
+    const appel = f.appels.find(
+      (a) => a.table === "versement" && a.methode === "findMany",
+    )!;
+    expect(appel.args.orderBy).toEqual({ creeLe: "desc" });
+    // Cloisonné par projet, à travers la relation.
+    expect(appel.args.where.abonnement).toEqual({ projetId: PROJET });
+  });
+
+  it("compte par état en une requête, et non cinq", async () => {
+    // Les états ne sont pas connus d'avance — un fournisseur peut en rendre un
+    // qu'on traduit en INCONNU — et cinq requêtes rendraient quatre zéros pour
+    // un chiffre qui manquerait.
+    const f = fauxClient([ligne()]);
+    f.versements.push(versement({ id: "v1", identifiantFournisseur: "c1" }));
+    f.versements.push(versement({ id: "v2", identifiantFournisseur: "c2" }));
+    f.versements.push(
+      versement({ id: "v3", identifiantFournisseur: "c3", etat: "ECHOUE" }),
+    );
+
+    const p = portsPrisma(f.client, { projetId: PROJET });
+    const comptes = await p.tableau.compterVersements!(DEPART);
+
+    expect(comptes).toEqual({ REUSSI: 2, ECHOUE: 1 });
+    expect(
+      f.appels.filter((a) => a.table === "versement" && a.methode === "groupBy"),
+    ).toHaveLength(1);
+  });
+
+  it("joint l'abonné à la liste : on relance quelqu'un, pas un identifiant", async () => {
+    const f = fauxClient([ligne()]);
+    const p = portsPrisma(f.client, { projetId: PROJET });
+
+    await p.tableau.lister({ resiliee: false }, { depuis: 0, combien: 10 });
+
+    const appel = f.appels.find(
+      (a) => a.table === "abonnement" && a.methode === "findMany",
+    )!;
+
+    // `select` et non `include` tout court : les jetons d'appareil sont des
+    // poignées opaques qui n'ont rien à faire dans un écran.
+    expect(appel.args.include.abonne.select).toEqual({
+      reference: true,
+      nom: true,
+      courriel: true,
+      telephone: true,
+    });
+    expect(appel.args.include.abonne.select.appareils).toBeUndefined();
   });
 });
