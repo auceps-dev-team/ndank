@@ -6,6 +6,61 @@ le reste.
 
 ---
 
+## 0.10.1
+
+Un correctif, trouvé en expliquant la version précédente.
+
+### Corrigé
+
+**Les deux écritures d'un paiement manuel tombent ou réussissent ensemble.**
+
+La 0.10.0 les enchaînait — le reçu, puis l'échéance — en pariant qu'un rejeu
+réparerait une panne au milieu. Le pari était faux.
+
+Écrire le reçu pose `compteLe`. Au rejeu, `dejaCompte` répond « déjà compté »,
+`reconcilier` rend « rien à faire », et **l'échéance ne bouge jamais**. L'abonné
+a payé, l'argent est enregistré, son abonnement reste en retard — et aucune
+tentative ne peut le corriger.
+
+`reconciliation.ts` avait pourtant posé la règle dès la 0.3.0 : « faire avancer
+une échéance et noter le versement qui l'a payée doivent tomber ou réussir
+*ensemble* ». `marquerPaye` faisait exactement ce que ce paragraphe interdit.
+
+### Ajouté
+
+**`Interventions.ensemble`**, facultative, et sa forme évite un second piège.
+Ceci ne transactionne rien :
+
+```ts
+ensemble: (travail) => client.$transaction(() => travail())
+```
+
+Prisma ouvre bien une transaction, mais les écritures de `travail` passent par
+le client extérieur — pas par le `tx` qu'il vient de fournir. Tout paraît
+normal, et rien n'est atomique. Ce serait pire que de ne rien avoir : on aurait
+cessé de se méfier.
+
+`travail` **reçoit** donc les écritures, construites contre le client
+transactionnel. `ClientNdank.$transaction` est typé pour rendre un `ClientNdank`,
+ce qui oblige l'adaptateur à les reconstruire — un `() => Promise<T>` aurait
+laissé écrire le piège sans qu'aucun type ne proteste.
+
+**`PortsIntervention.exigerEnsemble`** permet de refuser un paiement manuel
+plutôt que de l'écrire sans filet. Un réglage, pas une supposition : l'hôte
+choisit ce qu'il préfère risquer, en le sachant.
+
+### Vérifié ailleurs
+
+**`souscrire` est sûr**, et la raison est écrite dans le fichier : sa première
+écriture est un `upsert` idempotent, la seconde est gardée par une lecture. Une
+panne au milieu laisse une fiche de contact orpheline, sans conséquence, et le
+rejeu reprend proprement. C'est exactement ce qui manquait à `marquerPaye`, dont
+la première écriture posait un verrou qui empêchait la seconde d'avoir lieu.
+
+**`agir` et `relancerMaintenant`** envoient puis notent : une panne au milieu
+renvoie le message demain. Un doublon, pas de l'argent — l'arbitrage déjà posé.
+
+---
 ## 0.10.0
 
 Les quatre verbes que les maquettes portaient depuis le début. Deux d'entre eux

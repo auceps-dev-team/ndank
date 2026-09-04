@@ -746,6 +746,21 @@ enregistré deux fois ne compte qu'une.
 Il passe par `reconcilier`, comme un vrai paiement — même politique de règlement,
 même cumul des versements partiels, même contrôle de devise.
 
+Il pose **deux écritures** : le reçu, puis l'échéance. Elles doivent tomber ou
+réussir ensemble, et il faut le lui donner :
+
+```ts
+interventions.ensemble = (travail) =>
+  prisma.$transaction((tx) => travail(ecrituresDe(tx)));
+```
+
+`portsPrisma` le fait pour vous dès que votre client a `$transaction`.
+
+Sans elle, les deux écritures se suivent — et une panne au milieu laisse un reçu
+enregistré avec une échéance en retard, **que le rejeu ne répare pas** : le reçu
+porte déjà « compté », donc la seconde tentative ne fait rien. Posez
+`exigerEnsemble: true` pour que Ndank refuse plutôt que d'écrire sans filet.
+
 **Relancer est borné à une fois par jour.** Un bouton se clique cinq fois quand
 rien ne semble se passer ; cinq SMS partent, ils sont facturés, et l'abonné les
 reçoit tous. Le palier suit l'échéance et non le clic : relancer trois semaines
