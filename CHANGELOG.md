@@ -6,6 +6,91 @@ le reste.
 
 ---
 
+## 0.7.0
+
+Le chemin est complet : l'abonné reçoit une relance, ouvre un lien, paie, et
+son échéance avance — sans que l'hôte écrive une requête ni une page.
+
+### Ajouté
+
+**Le lien de relance est signé et périssable** — `src/page/lien.ts`. Le README
+montrait `/valider/ab-1` ; il avait tort, et c'était un défaut de
+confidentialité. Un lien qui porte l'identifiant en clair est **énumérable** :
+quiconque en reçoit un — un abonné, quelqu'un à qui il l'a transféré, un
+opérateur qui voit passer le SMS — change un chiffre et lit la page d'un autre.
+Il n'y a rien à deviner, il suffit de compter.
+
+Deux contraintes que le SMS impose : l'alphabet est celui de base64url, dont
+les soixante-quatre caractères sont tous dans l'alphabet GSM 03.38 — le lien ne
+fait donc pas basculer la relance en UCS-2 ; et le sceau est tronqué à douze
+octets, soit vingt-sept caractères rendus au nom de l'offre sur chaque relance.
+
+**La page de validation** — `src/page/`. Trois routes, aucune ressource
+extérieure, aucune ligne de JavaScript. Elle s'ouvre depuis un SMS, sur un
+téléphone d'entrée de gamme, en 3G, et c'est le dernier écran avant qu'un
+abonné ne perde son accès.
+
+Ce qui a demandé le plus d'attention :
+
+- **un abonnement à jour ne montre pas de bouton.** Le lien vient d'une
+  relance ; s'il mène à un abonnement à jour, c'est presque toujours que
+  l'abonné vient de payer et que la relance a croisé son règlement — ce dont le
+  courriel l'avertissait. Lui présenter quand même un bouton, c'est lui faire
+  payer deux fois, et Ndank ne rembourse pas : il n'a jamais touché l'argent ;
+- **le constat vérifie que la référence est la sienne.** Sans ce garde-fou, il
+  suffirait de changer `ref` dans l'URL pour faire constater le paiement de
+  quelqu'un d'autre sur son propre abonnement ;
+- **`Referrer-Policy: no-referrer`.** Le jeton est dans l'URL : sans cet
+  en-tête, le navigateur l'enverrait au fournisseur dans `Referer` au moment de
+  la redirection, et il finirait dans les journaux d'accès d'un tiers ;
+- **303 et non 302** après le formulaire, pour qu'un rechargement ne demande
+  pas un second paiement ;
+- **la réponse du fournisseur ne s'affiche jamais.** Elle peut porter un
+  identifiant de compte ou une partie de clé. Elle va au journal de l'hôte.
+
+**Le gestionnaire de webhooks** — `src/webhook/`. Le code de réponse y est une
+**instruction**, pas un compte rendu : `200` dit « n'y revenez pas », `500` dit
+« réessayez », `401` dit « ce n'est pas vous ». Rendre 200 sur une panne perd
+le paiement pour de bon ; rendre 500 sur un événement qu'on ignore fait rejouer
+trois jours durant, puis fait désactiver le point de terminaison.
+
+**L'API du tableau de bord** — `src/api/`. En lecture seule **par
+construction** : le port `Tableau` n'a aucun verbe qui écrit, et le routeur
+refuse tout ce qui n'est pas `GET`. Le détour par une API existe pour rendre
+une manipulation depuis le tableau de bord impossible plutôt qu'interdite — une
+application cliente est distribuée, son jeton est extractible, et tout ce
+qu'elle peut faire, quiconque tient ce jeton peut le faire.
+
+La contrainte qui donne sa forme à la couche : **on ne peut pas demander
+« combien de suspendus »**. Il n'y a pas de colonne `etat` — l'état se déduit.
+Une requête filtre donc sur des dates, et `bornesDe(etat, maintenant)` traduit.
+Un test confronte la traduction à `etatDe`, état par état.
+
+**`portsPrisma` rend `dossier` et `tableau`** en plus des trois ports du cœur.
+Un hôte du niveau 2 n'écrit toujours aucune requête.
+
+### Corrigé
+
+**Deux abonnés ne peuvent plus partager la même référence de versement.**
+`referenceDeVersement(echeance, versements)` rendait `2026-02-09#1` : elle ne
+dépendait que de l'échéance. Sur de la facturation mensuelle les échéances se
+concentrent, donc deux abonnés recevaient la même clé — et la référence est la
+clé d'idempotence chez le fournisseur. Paystack refuse une référence déjà vue,
+donc le second à payer ce jour-là était rejeté ; pire, `constater(reference)`
+interroge le fournisseur **par** cette clé, et aurait rendu la transaction de
+quelqu'un d'autre.
+
+Second défaut de la même ligne : le `#` ne figure pas dans le jeu de caractères
+qu'accepte une référence Paystack. La forme devient `20260209-1-ab-1`, et
+`reconcilier` refuse désormais une référence fabriquée pour un autre
+abonnement.
+
+### Déplacé
+
+**`echapper` vit dans `src/html.ts`**, avant que la page n'en fasse un second
+exemplaire — celui qui oublie l'apostrophe.
+
+---
 ## 0.6.0
 
 Ndank sait envoyer. Un hôte au niveau 2 n'a plus rien à écrire : il pose ses

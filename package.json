@@ -1,6 +1,6 @@
 {
   "name": "ndank",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Abonnements par mobile money, sans carte bancaire.",
   "type": "module",
   "main": "./src/moteur.ts",
@@ -20,6 +20,13 @@
     "./envoi/port": "./src/envoi/port.ts",
     "./envoi/redaction": "./src/envoi/redaction.ts",
     "./envoi/registre": "./src/envoi/registre.ts",
+    "./page": "./src/page/routeur.ts",
+    "./page/lien": "./src/page/lien.ts",
+    "./page/port": "./src/page/port.ts",
+    "./page/montage": "./src/page/montage.ts",
+    "./webhook": "./src/webhook/gestionnaire.ts",
+    "./api": "./src/api/routeur.ts",
+    "./api/tableau": "./src/api/tableau.ts",
     "./prisma": "./src/prisma/adaptateur.ts"
   },
   "files": [
