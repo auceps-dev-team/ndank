@@ -1188,6 +1188,20 @@ Il a aussi **confirmé** ce qui n'était qu'une affirmation : Paystack refuse un
 référence déjà vue (`Duplicate Transaction Reference`), ce sur quoi repose tout
 le correctif de la 0.7.0.
 
+## Ndank App
+
+L'application hébergée — la base, les tableaux de bord, l'espace abonné — vit
+dans un dépôt à part : [**Ndank-app**](https://github.com/auceps-dev-team/Ndank-app).
+Les maquettes s'y trouvent, ainsi que le contrat que l'application doit tenir.
+
+La séparation est nette, et c'est la proposition même de Ndank : cette
+bibliothèque ne stocke rien et ne dépend de rien, donc un marchand l'installe
+sans nous confier ses données. Lui ajouter un serveur, une base ou un écran
+reviendrait à défaire exactement cela.
+
+`ndank` ne parle à Ndank App que par un seul endroit — la projection, décrite
+plus haut — et un hôte qui ne la branche pas ne lui envoie jamais rien.
+
 ## Origine
 
 Extrait de [Baobart](https://github.com/auceps-dev-team/Baobart), place de

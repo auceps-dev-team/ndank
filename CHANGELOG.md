@@ -117,6 +117,16 @@ désormais encodé en hexadécimal.
 `lienOffre` plutôt que dans la documentation : un hôte ne doit pas pouvoir
 oublier le segment.
 
+### Déplacé
+
+**Les maquettes partent dans leur propre dépôt**,
+[Ndank-app](https://github.com/auceps-dev-team/Ndank-app). Elles décrivent des
+écrans que cette bibliothèque ne rendra jamais : le tableau de bord marchand et
+l'espace abonné appartiennent à l'application hébergée, qui a une base et des
+sessions, quand `ndank` n'a ni l'une ni les autres.
+
+Le paquet publié ne change pas : `files` ne les a jamais embarquées.
+
 ### Ce qui n'a pas été fait, et pourquoi
 
 **L'authentification.** Ndank livre le code SMS, pas la connexion. Une
