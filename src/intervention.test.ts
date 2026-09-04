@@ -549,3 +549,145 @@ describe("les jours accordés", () => {
     expect(m.renouvelements).toHaveLength(1);
   });
 });
+
+describe("les deux écritures d'un paiement", () => {
+  it("un rejeu ne répare PAS une panne au milieu — c'est pourquoi il faut une transaction", async () => {
+    // La démonstration du défaut que la 0.10.1 corrige, jouée à l'envers.
+    //
+    // On simule la panne : le reçu est écrit, le cycle ne l'est pas. Puis on
+    // rejoue, en croyant que cela répare. Le reçu porte `compteLe`, donc
+    // `dejaCompte` répond « déjà compté », `reconcilier` rend « rien à faire »,
+    // et l'échéance ne bouge JAMAIS. L'abonné a payé, l'argent est enregistré,
+    // son abonnement reste en retard.
+    const m = monter();
+
+    // La panne : `renouveler` tombe après que le versement est passé.
+    m.ports.ecriture!.renouveler = async () => {
+      throw new Error("connexion perdue");
+    };
+
+    await expect(
+      marquerPaye(m.ports, "ab-1", {
+        montant: 2000,
+        piece: "RECU-PANNE",
+        recuLe: MAINTENANT,
+        moyen: "espèces",
+        auteur: "a",
+      }),
+    ).rejects.toThrow(/connexion perdue/);
+
+    expect(m.versements).toHaveLength(1);
+    expect(m.renouvelements).toHaveLength(0);
+
+    // On rejoue, la base étant revenue.
+    m.ports.ecriture!.renouveler = async (id) => void m.renouvelements.push({ id });
+
+    const rejeu = await marquerPaye(m.ports, "ab-1", {
+      montant: 2000,
+      piece: "RECU-PANNE",
+      recuLe: MAINTENANT,
+      moyen: "espèces",
+      auteur: "a",
+    });
+
+    // Voilà le défaut : le rejeu ne fait rien, et le cycle reste en arrière.
+    expect(rejeu.faire).toBe("RIEN");
+    expect(m.renouvelements).toHaveLength(0);
+  });
+
+  it("les pose ensemble quand l'hôte fournit une transaction", async () => {
+    const m = monter();
+    const dedans: string[] = [];
+    let ouvertes = 0;
+
+    m.ports.interventions.ensemble = async (travail) => {
+      ouvertes += 1;
+      return travail({
+        async versementManuel(v) {
+          dedans.push(`versement:${v.identifiant}`);
+        },
+        async renouveler(id) {
+          dedans.push(`cycle:${id}`);
+        },
+      });
+    };
+
+    await marquerPaye(m.ports, "ab-1", {
+      montant: 2000,
+      piece: "RECU-9",
+      recuLe: MAINTENANT,
+      moyen: "espèces",
+      auteur: "a",
+    });
+
+    expect(ouvertes).toBe(1);
+    expect(dedans).toEqual(["versement:manuel:RECU-9", "cycle:ab-1"]);
+    // Rien n'est passé par les écritures hors transaction.
+    expect(m.versements).toHaveLength(0);
+    expect(m.renouvelements).toHaveLength(0);
+  });
+
+  it("annule tout quand la transaction échoue", async () => {
+    const m = monter();
+
+    m.ports.interventions.ensemble = async (travail) => {
+      // Ce que fait une vraie transaction : on laisse le travail poser ses
+      // écritures, puis on annule — donc aucune n'a eu lieu.
+      await travail({
+        async versementManuel() {},
+        async renouveler() {
+          throw new Error("contrainte violée");
+        },
+      });
+      return undefined as never;
+    };
+
+    await expect(
+      marquerPaye(m.ports, "ab-1", {
+        montant: 2000,
+        piece: "RECU-10",
+        recuLe: MAINTENANT,
+        moyen: "espèces",
+        auteur: "a",
+      }),
+    ).rejects.toThrow(/contrainte violée/);
+
+    expect(m.versements).toHaveLength(0);
+    expect(m.renouvelements).toHaveLength(0);
+  });
+
+  it("refuse d'écrire sans transaction quand l'hôte l'exige", async () => {
+    // Un réglage, pas une supposition : l'hôte choisit ce qu'il préfère
+    // risquer, en le sachant.
+    const m = monter();
+    m.ports.exigerEnsemble = true;
+
+    const suite = await marquerPaye(m.ports, "ab-1", {
+      montant: 2000,
+      piece: "RECU-11",
+      recuLe: MAINTENANT,
+      moyen: "espèces",
+      auteur: "a",
+    });
+
+    expect(suite.faire).toBe("REFUSE");
+    expect(m.versements).toHaveLength(0);
+  });
+
+  it("écrit quand même sans transaction, si l'hôte ne l'exige pas", async () => {
+    // Un hôte du niveau 1 qui n'a pas de transaction n'est pas exclu.
+    const m = monter();
+
+    const suite = await marquerPaye(m.ports, "ab-1", {
+      montant: 2000,
+      piece: "RECU-12",
+      recuLe: MAINTENANT,
+      moyen: "espèces",
+      auteur: "a",
+    });
+
+    expect(suite.faire).toBe("FAIT");
+    expect(m.versements).toHaveLength(1);
+    expect(m.renouvelements).toHaveLength(1);
+  });
+});

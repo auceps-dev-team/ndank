@@ -11,7 +11,11 @@ import type {
 } from "../api/tableau";
 import type { DossierAbonnement } from "../dossier";
 import { grille, type Grille, type Offre } from "../offre";
-import type { FaitIntervention, Interventions } from "../intervention";
+import type {
+  EcrituresPaiement,
+  FaitIntervention,
+  Interventions,
+} from "../intervention";
 import type { NouvelAbonnement, Souscriptions } from "../souscription";
 import type { ClientNdank, LigneAbonnement } from "./client";
 
@@ -126,6 +130,72 @@ function ligneDe(l: LigneAbonnement): LigneTableau {
           },
         }
       : {}),
+  };
+}
+
+/**
+ * Les deux écritures d'un paiement, construites contre un client donné.
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ * UNE FABRIQUE, ET NON DES MÉTHODES QUI FERMENT SUR `client`
+ *
+ * C'est ce qui permet de les reconstruire contre le client **transactionnel**
+ * que Prisma fournit à `$transaction`. Sans cette fabrique, elles resteraient
+ * liées au client extérieur — donc hors de la transaction, alors même qu'on
+ * l'aurait ouverte.
+ *
+ * Ce piège-là ne se voit pas : la transaction s'ouvre, se ferme, tout paraît
+ * normal, et rien n'est atomique. On aurait cessé de se méfier pour rien.
+ */
+function ecrituresDe(c: ClientNdank, projetId: string): EcrituresPaiement {
+  return {
+    /**
+     * Enregistre un versement constaté hors ligne.
+     *
+     * `upsert` sur `(fournisseur, identifiantFournisseur)` — la même unicité
+     * que pour les versements d'opérateur. La pièce justificative devient donc
+     * la clé d'idempotence, et le même reçu ne peut pas entrer deux fois.
+     *
+     * `compteLe` est posé tout de suite : un versement manuel n'attend aucun
+     * webhook, il est constaté au moment où on l'enregistre.
+     */
+    async versementManuel(v): Promise<void> {
+      await c.versement.upsert({
+        where: {
+          fournisseur_identifiantFournisseur: {
+            fournisseur: "manuel",
+            identifiantFournisseur: v.identifiant,
+          },
+        },
+        create: {
+          abonnementId: v.abonnementId,
+          fournisseur: "manuel",
+          identifiantFournisseur: v.identifiant,
+          reference: v.reference,
+          montant: v.montant,
+          devise: v.devise,
+          etat: "REUSSI",
+          regleLe: v.recuLe,
+          compteLe: new Date(),
+          brut: { manuel: true, moyen: v.moyen, auteur: v.auteur },
+        },
+        // La première écriture fait foi. Réécrire ferait bouger un montant déjà
+        // compté, sur une pièce que quelqu'un a peut-être déjà rapprochée.
+        update: {},
+      });
+    },
+
+    async renouveler(abonnementId: string, cycle: Cycle): Promise<void> {
+      await c.abonnement.updateMany({
+        where: { id: abonnementId, projetId },
+        data: {
+          debut: cycle.debut,
+          echeance: cycle.echeance,
+          accesJusquA: cycle.accesJusquA,
+          repriseJusquA: cycle.repriseJusquA,
+        },
+      });
+    },
   };
 }
 
@@ -637,50 +707,22 @@ export function portsPrisma(
       });
     },
 
+    /** Déléguée à la fabrique, pour qu'elle serve aussi dans la transaction. */
+    versementManuel: (v) => ecrituresDe(client, projetId).versementManuel(v),
+
     /**
-     * Enregistre un versement constaté hors ligne.
+     * Les deux écritures d'un paiement, dans une seule transaction.
      *
-     * `upsert` sur `(fournisseur, identifiantFournisseur)` — la même unicité
-     * que pour les versements d'opérateur. La pièce justificative devient donc
-     * la clé d'idempotence, et le même reçu ne peut pas entrer deux fois.
-     *
-     * `compteLe` est posé tout de suite : un versement manuel n'attend aucun
-     * webhook, il est constaté au moment où on l'enregistre.
+     * `travail` **reçoit** les écritures, construites contre le client
+     * transactionnel `tx`. Écrire `client.$transaction(() => travail())`
+     * ouvrirait bien une transaction, mais les écritures passeraient par le
+     * client extérieur — donc hors d'elle. On croirait tenir une garantie
+     * qu'on n'a pas, ce qui est pire que de ne pas en avoir.
      */
-    async versementManuel(v: {
-      abonnementId: string;
-      identifiant: string;
-      reference: string;
-      montant: number;
-      devise: string;
-      recuLe: Date;
-      moyen: string;
-      auteur: string;
-    }): Promise<void> {
-      await client.versement.upsert({
-        where: {
-          fournisseur_identifiantFournisseur: {
-            fournisseur: "manuel",
-            identifiantFournisseur: v.identifiant,
-          },
-        },
-        create: {
-          abonnementId: v.abonnementId,
-          fournisseur: "manuel",
-          identifiantFournisseur: v.identifiant,
-          reference: v.reference,
-          montant: v.montant,
-          devise: v.devise,
-          etat: "REUSSI",
-          regleLe: v.recuLe,
-          compteLe: new Date(),
-          brut: { manuel: true, moyen: v.moyen, auteur: v.auteur },
-        },
-        // La première écriture fait foi. Réécrire ferait bouger un montant déjà
-        // compté, sur une pièce que quelqu'un a peut-être déjà rapprochée.
-        update: {},
-      });
-    },
+    ensemble: client.$transaction
+      ? <T>(travail: (e: EcrituresPaiement) => Promise<T>): Promise<T> =>
+          client.$transaction!((tx) => travail(ecrituresDe(tx, projetId)))
+      : undefined,
 
     /**
      * Consigne le geste.

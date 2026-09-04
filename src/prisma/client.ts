@@ -179,4 +179,26 @@ export interface ClientNdank {
   relance: Delegue<LigneRelance>;
   versement: DelegueVersement;
   evenement: Delegue<{ id: string }>;
+
+  /**
+   * La transaction interactive de Prisma.
+   *
+   * ════════════════════════════════════════════════════════════════════════
+   * ELLE REND UN AUTRE CLIENT, ET C'EST TOUT L'ENJEU
+   *
+   * `$transaction(fn)` appelle `fn` avec un client **transactionnel**. Les
+   * écritures qui passent par lui sont dans la transaction ; celles qui passent
+   * par le client extérieur n'y sont pas — alors même qu'elle est ouverte.
+   *
+   * D'où le type de retour : `ClientNdank`, et non `void`. Il oblige
+   * l'adaptateur à reconstruire ses écritures contre ce client-là, ce qui est
+   * exactement ce qu'on veut qu'il fasse. Un `() => Promise<T>` aurait laissé
+   * écrire une transaction qui ne transactionne rien, sans qu'aucun type ne
+   * proteste.
+   *
+   * Facultative : un hôte peut passer un client qui ne l'a pas — un faux, une
+   * base sans transaction — et Ndank enchaîne alors les écritures, en le
+   * disant.
+   */
+  $transaction?<T>(fn: (tx: ClientNdank) => Promise<T>): Promise<T>;
 }

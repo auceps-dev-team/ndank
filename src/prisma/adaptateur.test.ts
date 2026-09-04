@@ -1023,3 +1023,70 @@ describe("les gestes manuels, contre le schéma", () => {
     expect(appels[0]!.args.create.detail.auteur).toBe("awa");
   });
 });
+
+describe("la transaction du paiement manuel", () => {
+  it("construit les écritures contre le client transactionnel, jamais l'extérieur", async () => {
+    // Le piège que ce correctif évite : `client.$transaction(() => travail())`
+    // ouvre bien une transaction, mais les écritures passent par le client
+    // extérieur — donc hors d'elle. La transaction s'ouvre, se ferme, tout
+    // paraît normal, et rien n'est atomique.
+    const f = fauxClient([ligne()]);
+    const interieur = fauxClient([ligne()]);
+
+    f.client.$transaction = async (fn) => fn(interieur.client);
+
+    const p = portsPrisma(f.client, { projetId: PROJET });
+
+    await p.interventions.ensemble!(async (ecritures) => {
+      await ecritures.versementManuel({
+        abonnementId: "ab-1",
+        identifiant: "manuel:R-1",
+        reference: "20260209-1-ab-1",
+        montant: 2000,
+        devise: "XOF",
+        recuLe: DEPART,
+        moyen: "espèces",
+        auteur: "awa",
+      });
+      await ecritures.renouveler("ab-1", cycleApresPaiement(DEPART, "MENSUEL"));
+    });
+
+    // Les deux écritures sont allées au client INTÉRIEUR.
+    expect(
+      interieur.appels.filter((a) => a.methode === "upsert" && a.table === "versement"),
+    ).toHaveLength(1);
+    expect(
+      interieur.appels.filter((a) => a.methode === "updateMany" && a.table === "abonnement"),
+    ).toHaveLength(1);
+
+    // Et aucune n'est passée par l'extérieur.
+    expect(f.appels.filter((a) => a.table === "versement")).toHaveLength(0);
+    expect(f.appels.filter((a) => a.methode === "updateMany")).toHaveLength(0);
+  });
+
+  it("n'expose pas `ensemble` quand le client n'a pas de transaction", async () => {
+    // Un faux, une base sans transaction : Ndank enchaîne alors les écritures,
+    // en le disant plutôt qu'en promettant une atomicité qu'il n'a pas.
+    const f = fauxClient([ligne()]);
+    const p = portsPrisma(f.client, { projetId: PROJET });
+
+    expect(p.interventions.ensemble).toBeUndefined();
+  });
+
+  it("cloisonne par projet jusque dans la transaction", async () => {
+    const f = fauxClient([ligne()]);
+    f.client.$transaction = async (fn) => fn(f.client);
+
+    const p = portsPrisma(f.client, { projetId: PROJET });
+
+    await p.interventions.ensemble!(async (e) => {
+      await e.renouveler("ab-1", cycleApresPaiement(DEPART, "MENSUEL"));
+    });
+
+    const appel = f.appels.find(
+      (a) => a.table === "abonnement" && a.methode === "updateMany",
+    )!;
+
+    expect(appel.args.where.projetId).toBe(PROJET);
+  });
+});

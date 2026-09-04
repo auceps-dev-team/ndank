@@ -98,6 +98,29 @@ export interface Souscription {
  * donne, l'instant présent sinon. C'est de là que part le cycle : facturer à
  * partir de l'instant de l'écriture ferait perdre à l'abonné les minutes, voire
  * les heures, qu'a mises le webhook à arriver.
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ * DEUX ÉCRITURES, ET POURQUOI CELLES-CI N'ONT PAS BESOIN DE TRANSACTION
+ *
+ * `marquerPaye` en a une, et il a fallu la lui donner : ses deux écritures se
+ * bloquaient l'une l'autre au rejeu. Ici, non — et la différence mérite d'être
+ * écrite, pour que personne ne « corrige » cet ordre plus tard.
+ *
+ * On écrit l'abonné, puis l'abonnement, avec une **lecture entre les deux** :
+ *
+ *   — panne après l'abonné : le rejeu refait l'`upsert`, qui rend le même
+ *     identifiant, puis `enCours` ne trouve rien, puis l'abonnement s'ouvre.
+ *     Correct. Ce qui reste en base entre-temps est une fiche de contact sans
+ *     abonnement — sans conséquence, et pas même visible ;
+ *
+ *   — panne après l'abonnement : le rejeu trouve l'abonnement par `enCours` et
+ *     rend `cree: false`. Correct aussi.
+ *
+ * Les deux propriétés qui le permettent : la première écriture est
+ * **idempotente**, et la seconde est **gardée par une lecture**. C'est
+ * exactement ce qui manquait à `marquerPaye`, dont la première écriture posait
+ * `compteLe` — c'est-à-dire un verrou qui empêchait la seconde de jamais avoir
+ * lieu.
  */
 export async function souscrire(
   souscriptions: Souscriptions,

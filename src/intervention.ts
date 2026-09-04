@@ -1,4 +1,4 @@
-import { cleDeCycle, jour, joursEntre, type Reglages } from "./cycle";
+import { cleDeCycle, jour, joursEntre, type Cycle, type Reglages } from "./cycle";
 import type { Creances } from "./encaissement/reconciliation";
 import { reconcilier } from "./encaissement/reconciliation";
 import type { Issue } from "./encaissement/port";
@@ -109,6 +109,80 @@ export interface Interventions {
 
   /** Consigne le geste. Appelé pour chacun, y compris les refus utiles. */
   journaliser(fait: FaitIntervention): Promise<void>;
+
+  /**
+   * Exécute `travail` avec des écritures liées à une seule unité de travail.
+   *
+   * ════════════════════════════════════════════════════════════════════════
+   * POURQUOI CETTE MÉTHODE EXISTE
+   *
+   * Enregistrer un paiement au comptoir demande deux écritures : le reçu, puis
+   * l'échéance. Entre les deux, le processus peut tomber.
+   *
+   * La première version les enchaînait, en pariant qu'un rejeu réparerait. Le
+   * pari était faux : écrire le reçu pose `compteLe`, donc au rejeu
+   * `dejaCompte` répond « déjà compté », `reconcilier` rend « rien à faire », et
+   * **l'échéance ne bouge jamais**. L'abonné a payé, l'argent est enregistré, et
+   * son abonnement reste en retard — sans qu'aucune tentative ne puisse le
+   * corriger.
+   *
+   * `reconciliation.ts` avait pourtant posé la règle dès la 0.3.0 : « faire
+   * avancer une échéance et noter le versement qui l'a payée doivent tomber ou
+   * réussir **ensemble** ». `marquerPaye` faisait exactement ce que ce
+   * paragraphe interdit.
+   *
+   * ════════════════════════════════════════════════════════════════════════
+   * ELLE REND LES ÉCRITURES, ELLE NE SE CONTENTE PAS D'ENVELOPPER
+   *
+   * C'est le piège de la transaction interactive, et il est facile à manquer.
+   * Écrire ceci ne transactionne **rien** :
+   *
+   *     ensemble: (travail) => client.$transaction(() => travail())
+   *
+   * Prisma ouvre bien une transaction, mais les écritures de `travail` passent
+   * par le client extérieur — pas par le `tx` qu'il vient de fournir. Elles
+   * sont donc hors de la transaction, et l'on croit tenir une garantie qu'on
+   * n'a pas. Ce serait pire que de ne rien avoir : on aurait cessé de se
+   * méfier.
+   *
+   * D'où la forme : `travail` **reçoit** les écritures, et l'implémentation les
+   * construit contre le client transactionnel.
+   *
+   *     ensemble: (travail) =>
+   *       client.$transaction((tx) => travail(ecrituresDe(tx)))
+   *
+   * ════════════════════════════════════════════════════════════════════════
+   * FACULTATIVE, ET CE QUE CELA COÛTE
+   *
+   * Un hôte du niveau 1 qui n'a pas de transaction n'est pas exclu : sans
+   * elle, les deux écritures se suivent, exactement comme avant. Ce qui change,
+   * c'est qu'il le sait — et qu'il peut exiger le contraire avec
+   * `PortsIntervention.exigerEnsemble`.
+   */
+  ensemble?<T>(travail: (ecritures: EcrituresPaiement) => Promise<T>): Promise<T>;
+}
+
+/**
+ * Les deux écritures d'un paiement, qui doivent tomber ou réussir ensemble.
+ *
+ * Rien de plus : ce sont exactement celles que `marquerPaye` pose. Y ajouter le
+ * journal serait une erreur — consigner un geste ne doit jamais empêcher de le
+ * poser, et une transaction qui échouerait sur le journal annulerait le
+ * paiement.
+ */
+export interface EcrituresPaiement {
+  versementManuel(versement: {
+    abonnementId: string;
+    identifiant: string;
+    reference: string;
+    montant: number;
+    devise: string;
+    recuLe: Date;
+    moyen: string;
+    auteur: string;
+  }): Promise<void>;
+
+  renouveler(abonnementId: string, cycle: Cycle): Promise<void>;
 }
 
 /** Ce qu'il faut brancher pour poser des gestes. */
@@ -121,6 +195,19 @@ export interface PortsIntervention {
   envoi?: Envoi;
   /** Pour le paiement manuel seulement. */
   creances?: Creances;
+
+  /**
+   * Refuser un paiement manuel plutôt que de l'écrire hors transaction.
+   *
+   * `false` par défaut, pour ne pas exclure un hôte qui n'a pas de transaction
+   * à offrir. Le mettre à `true` échange une commodité contre une garantie :
+   * plus aucun paiement manuel ne peut laisser un reçu enregistré et une
+   * échéance en retard.
+   *
+   * C'est un réglage et non une supposition — l'hôte choisit ce qu'il préfère
+   * risquer, en le sachant.
+   */
+  exigerEnsemble?: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────── suspendre ──
@@ -356,22 +443,56 @@ export async function marquerPaye(
     return { faire: "REFUSE", motif: decision.motif };
   }
 
-  // L'ordre compte : le versement d'abord, le cycle ensuite. Si la seconde
-  // écriture tombe, on a une pièce enregistrée et un cycle non avancé — ce qui
-  // se rattrape en rejouant le geste. L'inverse offrirait un mois.
-  await ports.interventions.versementManuel({
-    abonnementId,
-    identifiant,
-    reference: issue.reference,
-    montant: paiement.montant,
-    devise: abonnement.devise,
-    recuLe: paiement.recuLe,
-    moyen: paiement.moyen,
-    auteur: paiement.auteur,
-  });
+  /**
+   * Les deux écritures, ensemble ou pas du tout.
+   *
+   * ─────────────────────────────────────────────────────────────────────
+   * L'ORDRE NE SUFFISAIT PAS, ET C'ÉTAIT L'ERREUR
+   *
+   * La première version écrivait le reçu puis le cycle, en pariant qu'un rejeu
+   * réparerait une panne au milieu. Le pari était faux : le reçu porte
+   * `compteLe`, donc au rejeu `dejaCompte` répond « déjà compté » et l'échéance
+   * ne bouge **jamais**. Aucun ordre ne rattrape cela — il fallait une
+   * transaction, ce que `reconciliation.ts` disait depuis la 0.3.0.
+   */
+  const ensemble = ports.interventions.ensemble;
 
-  if (decision.faire === "RENOUVELER") {
-    await ports.ecriture.renouveler(abonnementId, decision.cycle);
+  if (!ensemble && ports.exigerEnsemble === true) {
+    return {
+      faire: "REFUSE",
+      motif:
+        "Cet hôte exige une transaction et n'en fournit pas : " +
+        "implémentez `Interventions.ensemble`, ou retirez `exigerEnsemble`.",
+    };
+  }
+
+  const poser = async (ecritures: EcrituresPaiement): Promise<void> => {
+    await ecritures.versementManuel({
+      abonnementId,
+      identifiant,
+      reference: issue.reference,
+      montant: paiement.montant,
+      devise: abonnement.devise,
+      recuLe: paiement.recuLe,
+      moyen: paiement.moyen,
+      auteur: paiement.auteur,
+    });
+
+    if (decision.faire === "RENOUVELER") {
+      await ecritures.renouveler(abonnementId, decision.cycle);
+    }
+  };
+
+  if (ensemble) {
+    await ensemble(poser);
+  } else {
+    // Sans transaction : les deux écritures se suivent, et l'ordre garde son
+    // sens relatif — mieux vaut un reçu sans cycle qu'un cycle sans reçu, qui
+    // offrirait un mois. Mais ce n'est plus présenté comme une garantie.
+    await poser({
+      versementManuel: (v) => ports.interventions.versementManuel(v),
+      renouveler: (id, cycle) => ports.ecriture!.renouveler(id, cycle),
+    });
   }
 
   await consigner(ports, {
