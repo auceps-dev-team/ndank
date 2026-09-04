@@ -1,7 +1,7 @@
 import type { Reglages } from "../cycle";
 import type { Encaissement, Issue } from "../encaissement/port";
 import type { Creances } from "../encaissement/reconciliation";
-import type { AbonnementLu, Coordonnees } from "../ports";
+import type { DossierAbonnement, SurIssue } from "../dossier";
 import type { Politique } from "../reglement";
 
 /**
@@ -47,26 +47,8 @@ import type { Politique } from "../reglement";
  * rend inoffensif le fait qu'ils concluent tous les deux.
  */
 
-/** Lire un abonnement par son identifiant. */
-export interface DossierAbonnement {
-  /**
-   * L'abonnement, ou `null` s'il n'existe plus.
-   *
-   * Un port distinct de `Lecture`, et non une méthode de plus : le passage
-   * quotidien n'a jamais besoin de lire par identifiant, et lui imposer cette
-   * méthode obligerait tous les hôtes du niveau 1 à l'écrire pour rien.
-   */
-  abonnement(id: string): Promise<AbonnementLu | null>;
+export type { DossierAbonnement, SurIssue } from "../dossier";
 
-  /**
-   * De quoi pré-remplir la demande chez le fournisseur. Facultatif.
-   *
-   * Un nom et une adresse rendent le reçu du fournisseur lisible et améliorent
-   * la reconnaissance de l'abonné quand il revient. Rien n'en dépend : sans
-   * cette méthode, la demande part avec le seul numéro saisi sur la page.
-   */
-  coordonnees?(abonneId: string): Promise<Coordonnees>;
-}
 
 /** Un moyen de paiement, tel que l'abonné le voit. */
 export interface ChoixFournisseur {
@@ -96,10 +78,6 @@ export interface ChoixFournisseur {
  * Il ne doit pas lever pour signaler un doublon — `Creances.dejaCompte` est
  * fait pour cela.
  */
-export type SurIssue = (
-  issue: Issue,
-  abonnement: AbonnementLu,
-) => Promise<void>;
 
 export interface ReglagesPage {
   /**
@@ -148,35 +126,15 @@ export interface ReglagesPage {
   retour?: string;
 }
 
-// ─────────────────────────────────────────────────────────────────── http ──
+// ─────────────────────────────────────────────────────────────────── web ──
 
 /**
- * Une requête, réduite à ce dont le routeur a besoin.
+ * Les formes d'une requête et d'une réponse vivent à la racine, dans
+ * `src/web.ts`.
  *
- * ────────────────────────────────────────────────────────────────────────────
- * NDANK NE LIVRE PAS DE SERVEUR
- *
- * `dependencies` est vide et doit le rester. Le routeur est donc une fonction
- * pure de cette forme vers la suivante, et l'hôte la monte où il veut : une
- * route Next, un gestionnaire Hono, un `http.createServer`, une fonction
- * déployée au bord.
- *
- * `montage.ts` fournit les deux adaptateurs qui couvrent presque tout.
+ * Elles sont réexportées ici parce que c'est par ce chemin que les hôtes les
+ * importent depuis la 0.7.0. Les webhooks et l'API, eux, vont les chercher à la
+ * source — un gestionnaire de webhooks n'a aucune raison d'importer depuis
+ * « la page ».
  */
-export interface RequeteWeb {
-  methode: string;
-  /** Le chemin **relatif au point de montage**, sans la base. */
-  chemin: string;
-  /** Les paramètres de requête, déjà décodés. */
-  parametres: Readonly<Record<string, string>>;
-  /** Le corps brut. Vide pour un `GET`. */
-  corps: string;
-  /** Les en-têtes, en minuscules. */
-  entetes: Readonly<Record<string, string | undefined>>;
-}
-
-export interface ReponseWeb {
-  statut: number;
-  entetes: Record<string, string>;
-  corps: string;
-}
+export type { RequeteWeb, ReponseWeb } from "../web";

@@ -11,6 +11,8 @@
     "./etats": "./src/etats.ts",
     "./ports": "./src/ports.ts",
     "./http": "./src/http.ts",
+    "./web": "./src/web.ts",
+    "./dossier": "./src/dossier.ts",
     "./gsm7": "./src/gsm7.ts",
     "./reglement": "./src/reglement.ts",
     "./encaissement": "./src/encaissement/port.ts",

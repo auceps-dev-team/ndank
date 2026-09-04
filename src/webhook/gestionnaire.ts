@@ -5,12 +5,8 @@ import {
 } from "../encaissement/port";
 import { lireReference } from "../encaissement/reconciliation";
 import type { AbonnementLu } from "../ports";
-import type {
-  DossierAbonnement,
-  ReponseWeb,
-  RequeteWeb,
-  SurIssue,
-} from "../page/port";
+import type { DossierAbonnement, SurIssue } from "../dossier";
+import type { ReponseWeb, RequeteWeb } from "../web";
 
 /**
  * Ndank — recevoir ce que le fournisseur envoie.

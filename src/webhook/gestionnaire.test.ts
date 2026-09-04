@@ -8,7 +8,7 @@ import {
 } from "../encaissement/port";
 import { referenceDeVersement } from "../encaissement/reconciliation";
 import type { AbonnementLu } from "../ports";
-import type { RequeteWeb } from "../page/port";
+import type { RequeteWeb } from "../web";
 import { gestionnaireWebhook, type FaitWebhook } from "./gestionnaire";
 
 const DEPART = new Date("2026-01-10T00:00:00Z");

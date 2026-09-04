@@ -1,4 +1,4 @@
-import type { ReponseWeb, RequeteWeb } from "./port";
+import type { ReponseWeb, RequeteWeb } from "../web";
 
 /**
  * Ndank — monter la page dans l'hôte, quel qu'il soit.

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { ajouterJours, cycleApresPaiement, jour } from "../cycle";
 import { etatDe, PREAVIS_JOURS, type Etat } from "../etats";
-import type { RequeteWeb } from "../page/port";
+import type { RequeteWeb } from "../web";
 import { routeurApi } from "./routeur";
 import { bornesDe, type Bornes, type LigneTableau, type Tableau } from "./tableau";
 

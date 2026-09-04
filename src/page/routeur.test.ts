@@ -6,7 +6,8 @@ import { referenceDeVersement, type Creances } from "../encaissement/reconciliat
 import type { AbonnementLu } from "../ports";
 import { lienDe, signerLien, jourDe } from "./lien";
 import { versFetch } from "./montage";
-import type { ReglagesPage, RequeteWeb } from "./port";
+import type { ReglagesPage } from "./port";
+import type { RequeteWeb } from "../web";
 import { routeurPage, VERIFICATIONS_MAX, type FaitPage } from "./routeur";
 
 const SECRET = "secret-de-page-suffisamment-long";

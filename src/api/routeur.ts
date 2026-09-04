@@ -2,7 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 
 import { joursEntre } from "../cycle";
 import { etatDe, type Etat } from "../etats";
-import type { ReponseWeb, RequeteWeb } from "../page/port";
+import type { ReponseWeb, RequeteWeb } from "../web";
 import { bornesDe, type LigneTableau, type Tableau } from "./tableau";
 
 /**

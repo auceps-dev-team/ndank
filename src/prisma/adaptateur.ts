@@ -3,7 +3,7 @@ import type { AbonnementLu, Canal, Coordonnees, Ecriture, Lecture } from "../por
 import type { Creances, EtatCreance } from "../encaissement/reconciliation";
 import { CREANCE_VIERGE } from "../encaissement/reconciliation";
 import type { Bornes, LigneTableau, Page, Tableau } from "../api/tableau";
-import type { DossierAbonnement } from "../page/port";
+import type { DossierAbonnement } from "../dossier";
 import type { ClientNdank, LigneAbonnement } from "./client";
 
 /**
