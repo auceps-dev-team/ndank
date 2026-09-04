@@ -83,8 +83,41 @@ function etatDepuis(statut: string | undefined): EtatEncaissement {
     case "failed":
     case "reversed":
       return "ECHOUE";
+
+    /**
+     * `abandoned` VEUT DIRE « PAS ENCORE », ET NON « TROP TARD »
+     *
+     * Il rendait `EXPIRE`, par lecture du mot. Le bac à sable a montré le
+     * contraire, et c'est un défaut qui se voyait sur chaque paiement :
+     *
+     *     initialize  →  reference « st1788517633705 »
+     *     verify      →  status "abandoned"
+     *                    gateway_response "The transaction was not completed"
+     *                    paid_at null
+     *
+     * **Trois secondes après l'initialisation.** Paystack marque `abandoned`
+     * dès qu'une transaction existe et n'est pas réglée — donc pendant tout le
+     * temps où l'abonné est en train de payer.
+     *
+     * La conséquence était immédiate. La page de validation traite `EXPIRE`
+     * comme terminal : elle arrête d'interroger et annonce « la demande a
+     * expiré avant que vous ne la validiez ». L'abonné voyait donc ce message
+     * cinq secondes après avoir cliqué sur « Régler », alors qu'il saisissait
+     * son code sur l'écran du fournisseur. Il revenait en arrière, recommençait,
+     * payait deux fois — ou renonçait.
+     *
+     * Un faux `Http` ne pouvait pas le dire : c'est celui qui l'écrit qui
+     * décide quand renvoyer `abandoned`, et il le renvoie quand il pense à
+     * l'abandon.
+     *
+     * Paystack ne distingue d'ailleurs jamais « pas encore » de « renoncé » :
+     * le statut reste `abandoned` dans les deux cas. C'est donc à Ndank de
+     * décider quand cesser d'attendre — la page le fait au bout de deux
+     * minutes, et le passage quotidien au bout de l'échéance.
+     */
     case "abandoned":
-      return "EXPIRE";
+      return "EN_ATTENTE";
+
     default:
       return "INCONNU";
   }

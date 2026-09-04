@@ -282,6 +282,43 @@ describe("Paystack", () => {
     expect(issue.regleLe?.toISOString()).toBe("2026-02-09T10:00:00.000Z");
   });
 
+  it("lit « abandoned » comme EN_ATTENTE, et surtout pas comme EXPIRE", async () => {
+    // Relevé du bac à sable, trois secondes après l'initialisation :
+    //
+    //   status "abandoned", gateway_response "The transaction was not
+    //   completed", paid_at null
+    //
+    // Paystack marque `abandoned` dès qu'une transaction existe et n'est pas
+    // réglée — donc pendant tout le temps où l'abonné est en train de payer.
+    //
+    // Le traduire en EXPIRE faisait annoncer « la demande a expiré avant que
+    // vous ne la validiez » cinq secondes après le clic sur « Régler », alors
+    // que l'abonné saisissait son code sur l'écran du fournisseur.
+    const f = fauxHttp([
+      {
+        corps: {
+          status: true,
+          data: {
+            id: 1,
+            reference: "20260209-1-ab-1",
+            status: "abandoned",
+            gateway_response: "The transaction was not completed",
+            amount: 2000,
+            currency: "XOF",
+            paid_at: null,
+          },
+        },
+      },
+    ]);
+
+    const issue = await paystack({ cleSecrete: "sk", http: f.http }).constater(
+      "20260209-1-ab-1",
+    );
+
+    expect(issue.etat).toBe("EN_ATTENTE");
+    expect(issue.regleLe).toBeNull();
+  });
+
   it("lit un webhook signé, et ignore les événements qui ne sont pas des charges", () => {
     const cle = "sk_test";
     const adaptateur = paystack({ cleSecrete: cle, http: fauxHttp([]).http });

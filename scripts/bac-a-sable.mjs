@@ -62,12 +62,38 @@ function verifier(quoi, condition, detail = "") {
   console.log(`  ✗ ${quoi}${detail ? ` — ${detail}` : ""}`);
 }
 
-/** Un abonné de test. Le numéro est celui que Paystack documente pour ses essais. */
+/**
+ * Un abonné de test.
+ *
+ * ────────────────────────────────────────────────────────────────────────────
+ * L'ADRESSE N'EST PAS EN `.test`, ET C'EST LE BAC À SABLE QUI L'A APPRIS
+ *
+ * La première version employait `essai@ndank.test`, par réflexe : `.test` est
+ * le domaine réservé aux essais (RFC 2606), donc il ne peut atteindre personne.
+ *
+ * Paystack le refuse. `"email" must be a valid email`, en 400 — un message qui
+ * ne dit pas que c'est le domaine de premier niveau qui gêne, et qu'on lit
+ * trois fois en cherchant une faute de frappe.
+ *
+ * C'est exactement le genre de chose qu'un faux `Http` ne dira jamais, et la
+ * raison d'être de ce script.
+ */
 const ABONNE = {
   nom: "Awa Ndank",
-  courriel: "essai@ndank.test",
-  telephone: "+2348123456789",
+  courriel: "awa@baobart.ci",
+  telephone: "+2250700000000",
 };
+
+/**
+ * La devise du compte d'essai.
+ *
+ * `XOF` par défaut, parce que c'est celle de Ndank. Un compte Paystack n'active
+ * que les devises de son marché : les autres reviennent en `403 Currency not
+ * supported by merchant`, ce qui est un message clair — pour peu qu'on sache
+ * qu'il parle du compte et non de la requête.
+ */
+const DEVISE = process.env["PAYSTACK_DEVISE"] ?? "XOF";
+const MONTANT = Number.parseInt(process.env["PAYSTACK_MONTANT"] ?? "2000", 10);
 
 // ─────────────────────────────────────────────────────────────── paystack ──
 
@@ -92,8 +118,6 @@ async function paystack() {
 
   const p = fournisseur("paystack", { cleSecrete: CLE_PAYSTACK });
 
-  // Paystack ne traite pas le XOF sur un compte d'essai ordinaire : on éprouve
-  // la forme des requêtes, pas la devise de production.
   const echeance = new Date();
   const unique = `essai${Date.now().toString(36)}`;
   const reference = referenceDeVersement(unique, echeance, 0);
@@ -109,8 +133,8 @@ async function paystack() {
   try {
     invitation = await p.inviter({
       reference,
-      montant: 50_000,
-      devise: "NGN",
+      montant: MONTANT,
+      devise: DEVISE,
       libelle: "Essai Ndank",
       abonne: ABONNE,
       retour: "https://p.ndank.test/v/retour",
@@ -133,8 +157,8 @@ async function paystack() {
   try {
     await p.inviter({
       reference,
-      montant: 50_000,
-      devise: "NGN",
+      montant: MONTANT,
+      devise: DEVISE,
       libelle: "Essai Ndank",
       abonne: ABONNE,
       retour: "https://p.ndank.test/v/retour",
@@ -145,23 +169,38 @@ async function paystack() {
 
   verifier(
     "une référence déjà vue est refusée — c'est ce qui justifie la 0.7.0",
-    doublon !== null,
+    doublon !== null && /duplicate/i.test(String(doublon)),
     doublon === null
       ? "Paystack a accepté deux fois la même référence : le correctif reposait sur une hypothèse fausse"
-      : "",
+      : // Sans ce contrôle du motif, une coupure réseau passerait pour une
+        // confirmation : n'importe quelle exception validerait l'assertion.
+        `refusé, mais pas pour doublon : ${String(doublon).slice(0, 120)}`,
   );
 
   const issue = await p.constater(reference);
 
   verifier("le constat retrouve la transaction", issue.reference === reference);
+
+  /**
+   * Une transaction jamais réglée est EN_ATTENTE, jamais EXPIRE.
+   *
+   * C'est le défaut que ce script a trouvé et que la 0.8.1 corrige. Paystack
+   * marque `abandoned` dès l'initialisation ; le lire comme une expiration
+   * faisait annoncer à l'abonné que sa demande avait expiré cinq secondes
+   * après qu'il eut cliqué sur « Régler ».
+   *
+   * On le vérifie ici plutôt qu'ailleurs parce que c'est ici que le mensonge
+   * était possible : le faux `Http` de la suite rend ce qu'on lui a écrit.
+   */
   verifier(
-    "le constat rend un état lisible",
-    ["EN_ATTENTE", "ECHOUE", "EXPIRE", "REUSSI"].includes(issue.etat),
-    issue.etat,
+    "une transaction jamais réglée est EN_ATTENTE, et non EXPIRE",
+    issue.etat === "EN_ATTENTE",
+    `état rendu : ${issue.etat} — si c'est EXPIRE, la page de validation ` +
+      `annoncera une expiration à quelqu'un qui est en train de payer`,
   );
   verifier(
     "le constat rapporte le montant et la devise",
-    issue.montant === 50_000 && issue.devise === "NGN",
+    issue.montant === MONTANT && issue.devise === DEVISE,
     `${issue.montant} ${issue.devise}`,
   );
 
