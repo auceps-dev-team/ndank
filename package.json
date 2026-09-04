@@ -137,6 +137,16 @@
         "default": "./dist/souscription.cjs"
       }
     },
+    "./intervention": {
+      "import": {
+        "types": "./dist/intervention.d.ts",
+        "default": "./dist/intervention.js"
+      },
+      "require": {
+        "types": "./dist/intervention.d.cts",
+        "default": "./dist/intervention.cjs"
+      }
+    },
     "./encaissement": {
       "import": {
         "types": "./dist/encaissement/port.d.ts",
