@@ -1170,6 +1170,144 @@ chiffres qu'on envoie par SMS ; il n'y a ni session, ni cookie, ni compte, ni
 de tout cela, et lui en donner ferait porter au SDK une responsabilité qui
 appartient à Ndank App.
 
+## Brancher le SMS : ce que cela demande vraiment
+
+**Ndank ne sait pas envoyer un SMS.** Il sait en *rédiger* un — tenir en un seul
+segment GSM-7, lien signé compris — et le tendre à une passerelle. La passerelle
+n'est pas à lui, et c'est la seule pièce de l'échelle de relance qu'un hôte doit
+se procurer avant que le canal existe.
+
+Le courriel se branche en dix minutes avec une clé d'API. Le push aussi. Le SMS
+demande une décision, et souvent du matériel.
+
+### Trois voies, trois contraintes
+
+| Voie | Ce qu'il faut avoir | Ce que cela coûte | Ce qu'on obtient |
+|---|---|---|---|
+| **Twilio** | un compte, une carte bancaire, un expéditeur déclaré | ~5 c€ le SMS vers la Côte d'Ivoire | la livraison partout, aucun matériel |
+| **Passerelle Android** | un téléphone, une SIM, l'application, un réseau joignable | le forfait, et rien de plus | `Delivered`, et rien qui transite chez un tiers |
+| **Opérateur local** | un contrat commercial, des semaines de délai | le moins cher au volume | ce que l'opérateur veut bien |
+
+Orange SMS et Africa's Talking sont **déclarés au registre mais pas branchés**.
+Leur configuration se valide dès aujourd'hui — ouvrir un contrat opérateur prend
+des semaines, et il vaut mieux que les champs soient prêts — mais l'envoi refuse,
+en disant où obtenir l'accès :
+
+```
+La passerelle « orange-sms » n'est pas branchée dans Ndank.
+Canal : sms. Champs prévus : identifiantClient, secretClient, expediteur.
+Portail developer.orange.com, produit « SMS API », puis un contrat de volume par pays.
+```
+
+Un adaptateur inventé qui échoue au premier vrai paiement vaudrait moins qu'un
+refus franc.
+
+### La voie Android, dans l'ordre
+
+Cinq choses, et la quatrième est celle qu'on découvre trop tard.
+
+1. **Un téléphone Android qui reste allumé et branché.** Pas celui qu'on emporte
+   le week-end : c'est un serveur, il doit être traité comme tel.
+2. **Une SIM avec un forfait SMS**, chez un opérateur du pays des abonnés.
+3. **L'application** [android-sms-gateway](https://github.com/capcom6/android-sms-gateway),
+   qui affiche un identifiant et un mot de passe dans ses réglages.
+4. **La joignabilité.** Votre serveur doit pouvoir atteindre ce téléphone, et
+   c'est là que le choix se fait :
+
+   — en **mode local**, le serveur et le téléphone sont sur le même réseau
+   (`http://192.168.1.42:8080`). Rien ne transite chez personne. Mais votre
+   serveur doit être dans ce réseau — ce qui exclut un hébergement distant ;
+
+   — en **mode nuage** (`https://api.sms-gate.app`), cela marche depuis
+   n'importe où. Le contenu des messages passe alors par un serveur que vous ne
+   tenez pas — or un SMS de relance porte un nom, un montant et un lien signé.
+
+   Il n'y a pas de bonne réponse générale. Il y a la vôtre, et elle dépend
+   d'où tourne votre passage quotidien.
+
+5. **La configuration**, puis `verifierEnvoi()` au démarrage — il nomme le
+   champ qui manque au lieu de laisser la passerelle répondre 401 le troisième
+   jour :
+
+   ```ts
+   verifierEnvoi({
+     sms: { passerelle: "passerelle-android", identifiants: process.env },
+   });
+   // → ["sms : passerelle-android — utilisateur, motDePasse manque(nt)."]
+   ```
+
+```ts
+import { transporteurSms } from "ndank/envoi/registre";
+import { limiter } from "ndank/envoi/limite";
+
+const sms = limiter(
+  transporteurSms("passerelle-android", {
+    base: process.env.SMS_BASE,
+    utilisateur: process.env.SMS_UTILISATEUR,
+    motDePasse: process.env.SMS_MOT_DE_PASSE,
+  }),
+  { parMinute: 10, parJour: 300 },
+);
+```
+
+### Ce que la limite règle, et ce qu'elle ne règle pas
+
+C'est le tableau qui compte, parce que la tentation est de croire qu'un
+paramètre a fait disparaître un risque.
+
+| Le risque | Ce que `limiter` en fait |
+|---|---|
+| **L'opérateur suspend la SIM** | **Atténué, pas supprimé.** L'espacement retire le motif qui déclenche la détection. Il ne rend pas l'usage conforme à un contrat grand public |
+| **Le téléphone tombe en panne** | **Rien.** La limite n'y peut rien. Seul `bilan()` le voit — et au passage suivant |
+| **Le débit d'un téléphone** | **Rendu explicite.** Il ne l'augmente pas : il vous fait choisir le rythme au lieu de le subir |
+
+Le premier point mérite d'être lu deux fois. Une carte grand public qui émet des
+messages applicatifs sort de l'usage pour lequel elle est vendue, quel que soit
+le rythme. Le risque croît avec le volume — quelques dizaines de rappels par mois
+vers ses propres clients n'est pas dix mille — mais il ne descend jamais à zéro.
+**C'est une décision d'hôte, pas un réglage de bibliothèque**, et Ndank ne la
+prendra pas à votre place.
+
+### La panne du téléphone se voit, mais pas tout de suite
+
+C'est la limite la plus concrète, et elle vaut d'être dite en clair : entre le
+moment où le téléphone s'éteint et celui où quelqu'un l'apprend, il se passe **un
+passage quotidien**.
+
+`bilan()` le rapporte alors sans ambiguïté :
+
+```
+[ALERTE]  Aucun SMS n'est parti : 30 tentatives, 30 échecs.
+          La passerelle SMS refuse tout. Vérifiez la clé, le solde du compte
+          et l'expéditeur déclaré — ce n'est pas un incident réseau, c'est
+          une configuration.
+```
+
+Un hôte qui tient au SMS ne s'en remet donc pas au tableau de bord : il alerte
+sur `PANNE` et `ALERTE` par un canal qui ne dépend pas du téléphone.
+
+### Ce que Ndank ne saura jamais vous dire
+
+Trois choses qu'aucune de ses vérifications n'atteint, parce qu'aucune API ne
+les expose :
+
+- **si la SIM a du crédit.** Un forfait épuisé donne des échecs, pas un message
+  clair. On le déduit d'une `ALERTE`, on ne le lit pas ;
+- **si l'opérateur vous limite.** Un débit soudainement réduit ressemble à un
+  réseau lent ;
+- **si le message est arrivé** — sauf par cette passerelle-ci, seule à rendre
+  `Delivered`, et seulement si l'hôte relit `etatDuMessage` après coup.
+
+### Le courriel d'abord, toujours
+
+Une conséquence pratique de tout ce qui précède : **le SMS n'est pas le premier
+barreau de l'échelle, et ne doit pas l'être.**
+
+Le courriel ne coûte rien, ne suspend aucune SIM, et ne dépend pas d'un
+téléphone posé sur une étagère. C'est pour cela que le checkout public exige une
+adresse : sans elle, chaque relance de cet abonné consomme la ressource la plus
+fragile du système.
+
 ## Envoyer moins vite, pour continuer à envoyer
 
 Deux hôtes ont le même besoin pour deux raisons opposées. Celui qui passe par

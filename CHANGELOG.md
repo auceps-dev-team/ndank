@@ -6,6 +6,49 @@ le reste.
 
 ---
 
+## 0.17.1
+
+### Documenté
+
+**« Brancher le SMS : ce que cela demande vraiment ».** Le courriel se branche en
+dix minutes avec une clé d'API ; le SMS demande une décision, et souvent du
+matériel. C'est la seule pièce de l'échelle de relance qu'un hôte doit se
+procurer avant que le canal existe, et rien ne le disait en un endroit.
+
+La section compare les trois voies, déroule la voie Android dans l'ordre, et
+s'arrête sur celle qu'on découvre trop tard : **la joignabilité**. En mode local
+rien ne transite chez personne, mais le serveur doit être sur le réseau du
+téléphone — ce qui exclut un hébergement distant. En mode nuage cela marche de
+partout, et le contenu des messages passe par un tiers. Il n'y a pas de bonne
+réponse générale.
+
+**Ce que `limiter` règle, et ce qu'il ne règle pas.** La tentation est de croire
+qu'un paramètre a fait disparaître un risque :
+
+- l'opérateur qui suspend la SIM — **atténué, pas supprimé**. L'espacement
+  retire le motif qui déclenche la détection, il ne rend pas l'usage conforme à
+  un contrat grand public ;
+- le téléphone qui tombe en panne — **rien**. Seul `bilan()` le voit, et au
+  passage suivant ;
+- le débit d'un téléphone — **rendu explicite**, pas augmenté.
+
+Et trois choses qu'aucune vérification n'atteint, parce qu'aucune API ne les
+expose : si la SIM a du crédit, si l'opérateur limite, et si le message est
+arrivé — sauf par la passerelle Android, seule à rendre `Delivered`.
+
+### Corrigé
+
+Deux affirmations de cette section étaient fausses, et ont été vérifiées contre
+le code avant publication plutôt qu'après :
+
+- Orange SMS ne refuse pas « en disant par quoi le remplacer » — il dit **où
+  obtenir l'accès**, portail et produit nommés. La sortie réelle est citée ;
+- `verifierEnvoi` prend `{ canal: { passerelle, identifiants } }`, et non
+  `{ nom, identifiants }`. L'exemple donné n'aurait rien vérifié : il aurait
+  répondu « passerelle inconnue « undefined » ».
+
+---
+
 ## 0.17.0
 
 ### Ajouté
