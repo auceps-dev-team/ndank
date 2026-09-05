@@ -1207,12 +1207,26 @@ schéma à un vrai PostgreSQL (Prisma 6.19.3, branche `Ndank-Baobart-Test`).
 
 Restent trois paris, dont un à moitié levé.
 
-- [ ] **Les quatre passerelles d'envoi.** Resend, Brevo, Twilio et Expo sont
-      écrites d'après leur documentation. **Partiellement levé** :
-      `champsManquants` et `verifierEnvoi` refusent bien une configuration
-      incomplète. Mais aucun `POST` réel n'a atteint `api.resend.com`,
-      `api.brevo.com`, `api.twilio.com` ni `exp.host` — donc rien ne dit que la
-      réponse a la forme que l'adaptateur suppose.
+- [ ] **Les quatre passerelles d'envoi.** Resend, Brevo, Twilio et Expo
+      étaient écrites d'après leur documentation, sans qu'aucune n'ait jamais
+      été appelée.
+
+      **Resend est levé, le 5 septembre 2026**, avec une vraie clé et un
+      domaine vérifié. Une relance complète — rédigée par `redigerCourriel`, pas
+      un « hello world » — part et rend son identifiant. Les trois chemins
+      d'échec se comportent aussi : clé invalide → 401, domaine non vérifié →
+      403 avec un message qui le nomme.
+
+      **Une limite a été trouvée en même temps, et elle vaut d'être connue.**
+      Une adresse qui rebondit rend `parti: true` : Resend accepte le message,
+      et le rebond n'arrive que plus tard, par webhook. Un abonné dont
+      l'adresse est morte compte donc comme joignable, et l'échelle croit
+      l'avoir prévenu. Ndank ne peut pas le rattraper — le port `Envoi` rend un
+      booléen à l'envoi, pas un accusé différé. Un hôte qui veut la vérité
+      branche les webhooks de Resend.
+
+      **Brevo, Twilio et Expo restent ouverts.**
+
 - [ ] **Flutterwave et MTN.** Seul Paystack avait tourné en bac à sable — et
       c'est lui qui a révélé les deux erreurs les plus coûteuses du dépôt.
 
@@ -1249,8 +1263,11 @@ Restent trois paris, dont un à moitié levé.
 
       Quarante francs de commission sur deux mille, soit 2 %. Si Flutterwave
       avait lu 2 000 comme des unités mineures — vingt francs — la commission
-      aurait été de 0,4. La documentation v4 le confirme par ailleurs :
-      `{ "currency": "GHS", "amount": 200 }` vaut deux cents cedis.
+      aurait été de 0,4.
+
+      **Et le tableau de bord marchand l'affiche : `XOF 2,000.00`.** C'est le
+      même écran qui, sur Paystack, avait affiché `XOF 20.00` pour la même
+      somme et révélé l'erreur de facteur 100. Le contraste vaut démonstration.
 
       **Et l'essai le plus naturel n'aurait rien appris.** Pour le franc CFA,
       `versFournisseur` est l'identité : zéro décimale des deux côtés, donc

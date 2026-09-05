@@ -68,8 +68,29 @@ export function resend(config: ConfigResend): TransporteurCourriel {
         }),
       );
 
-      // Un 2xx sans identifiant n'est pas un succès qu'on sache attester : on le
-      // dit plutôt que de compter une relance qui n'est peut-être pas partie.
+      /**
+       * Un 2xx sans identifiant n'est pas un succès qu'on sache attester : on
+       * le dit plutôt que de compter une relance qui n'est peut-être pas partie.
+       *
+       * ═══════════════════════════════════════════════════════════════════
+       * « PARTI » VEUT DIRE « ACCEPTÉ », PAS « REÇU »
+       *
+       * Éprouvé avec de vraies clés le 5 septembre 2026 :
+       *
+       *   — clé invalide          → 401, on lève ;
+       *   — domaine non vérifié   → 403, on lève, et le message le nomme ;
+       *   — adresse qui rebondit  → **202, identifiant rendu, `parti: true`**.
+       *
+       * Le troisième cas est le piège. Resend accepte le message, et le rebond
+       * n'arrive que plus tard, par webhook. Un abonné dont l'adresse est morte
+       * comptera donc comme joignable, et l'échelle de relance croira l'avoir
+       * prévenu — alors qu'il ne saura rien de son échéance.
+       *
+       * Ndank ne le rattrape pas, et ne le peut pas : le port `Envoi` rend un
+       * booléen au moment de l'envoi, pas un accusé de réception différé. Un
+       * hôte qui veut la vérité doit brancher les webhooks de Resend et retirer
+       * lui-même les adresses qui rebondissent.
+       */
       const reference = chaine(reponse["id"]);
 
       return { parti: reference !== null, reference };

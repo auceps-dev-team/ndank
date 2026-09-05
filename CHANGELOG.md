@@ -6,6 +6,34 @@ le reste.
 
 ---
 
+## 0.15.1
+
+### Documenté
+
+**« Parti » veut dire « accepté », pas « reçu ».** Éprouvé avec une vraie clé
+Resend : une adresse qui rebondit rend `parti: true`. La passerelle accepte le
+message, et le rebond n'arrive que plus tard, par webhook.
+
+Un abonné dont l'adresse est morte compte donc comme joignable, et l'échelle de
+relance croit l'avoir prévenu — alors qu'il ne saura rien de son échéance. Ndank
+ne peut pas le rattraper : le port `Envoi` rend un booléen au moment de
+l'envoi, pas un accusé différé. C'est écrit dans l'adaptateur, là où le prochain
+lecteur le trouvera.
+
+### Éprouvé
+
+**Resend passe.** Une relance complète, rédigée par `redigerCourriel`, part et
+rend son identifiant. Les trois chemins d'échec aussi : clé invalide → 401,
+domaine non vérifié → 403 avec un message qui le nomme, rebond → accepté.
+
+**La case #8 est confirmée à l'œil.** Le tableau de bord Flutterwave affiche
+`XOF 2,000.00` — le même écran qui, sur Paystack, avait affiché `XOF 20.00`
+pour la même somme.
+
+Brevo, Twilio, Expo et MTN restent ouverts.
+
+---
+
 ## 0.15.0
 
 Flutterwave fonctionne. Éprouvé avec de vraies clés, pas déduit d'une lecture.
