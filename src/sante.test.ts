@@ -554,3 +554,77 @@ describe("chaque constat se lit sans avoir écrit ce code", () => {
     }
   });
 });
+
+describe("la file des SMS", () => {
+  it("ne dit rien d'une file qui bouge", async () => {
+    // L'appareil vient toutes les quelques secondes : quelques messages en
+    // attente est l'état normal, pas un incident.
+    const c = await bilan(
+      {
+        battements: battements(),
+        async fileSms() {
+          return { enAttente: 4, enCours: 2, attenteMax: 3 };
+        },
+      },
+      {},
+      MAINTENANT,
+    );
+
+    expect(celui(c, "FILE_SMS")?.gravite).toBe("RIEN");
+  });
+
+  it("voit la panne de l'appareil sans qu'un seul envoi ait échoué", async () => {
+    // C'est le gain de la file. Sans elle, il fallait qu'un lot entier échoue
+    // au passage suivant — vingt-quatre heures plus tard.
+    const c = await bilan(
+      {
+        battements: battements(),
+        async fileSms() {
+          return { enAttente: 31, enCours: 0, attenteMax: 5400 };
+        },
+      },
+      {},
+      MAINTENANT,
+    );
+
+    expect(celui(c, "FILE_SMS")?.gravite).toBe("ALERTE");
+    expect(celui(c, "FILE_SMS")?.titre).toBe("31 SMS attendent depuis 90 min.");
+    expect(celui(c, "FILE_SMS")?.quoiFaire).toMatch(/éteint, hors réseau/);
+  });
+
+  it("gradue : dix minutes inquiètent, une heure alerte", async () => {
+    const avec = async (attenteMax: number) =>
+      celui(
+        await bilan(
+          {
+            battements: battements(),
+            async fileSms() {
+              return { enAttente: 3, enCours: 0, attenteMax };
+            },
+          },
+          {},
+          MAINTENANT,
+        ),
+        "FILE_SMS",
+      )?.gravite;
+
+    expect(await avec(300)).toBe("RIEN");
+    expect(await avec(1200)).toBe("ATTENTION");
+    expect(await avec(3600)).toBe("ALERTE");
+  });
+
+  it("se tait quand la file est vide", async () => {
+    const c = await bilan(
+      {
+        battements: battements(),
+        async fileSms() {
+          return { enAttente: 0, enCours: 0, attenteMax: null };
+        },
+      },
+      {},
+      MAINTENANT,
+    );
+
+    expect(celui(c, "FILE_SMS")).toBeUndefined();
+  });
+});

@@ -1,6 +1,6 @@
 {
   "name": "ndank",
-  "version": "0.17.1",
+  "version": "0.18.0",
   "description": "Abonnements par mobile money, sans carte bancaire.",
   "type": "module",
   "main": "./dist/moteur.cjs",
@@ -285,6 +285,46 @@
       "require": {
         "types": "./dist/envoi/redaction.d.cts",
         "default": "./dist/envoi/redaction.cjs"
+      }
+    },
+    "./file/port": {
+      "import": {
+        "types": "./dist/file/port.d.ts",
+        "default": "./dist/file/port.js"
+      },
+      "require": {
+        "types": "./dist/file/port.d.cts",
+        "default": "./dist/file/port.cjs"
+      }
+    },
+    "./file/transporteur": {
+      "import": {
+        "types": "./dist/file/transporteur.d.ts",
+        "default": "./dist/file/transporteur.js"
+      },
+      "require": {
+        "types": "./dist/file/transporteur.d.cts",
+        "default": "./dist/file/transporteur.cjs"
+      }
+    },
+    "./file/routeur": {
+      "import": {
+        "types": "./dist/file/routeur.d.ts",
+        "default": "./dist/file/routeur.js"
+      },
+      "require": {
+        "types": "./dist/file/routeur.d.cts",
+        "default": "./dist/file/routeur.cjs"
+      }
+    },
+    "./file/memoire": {
+      "import": {
+        "types": "./dist/file/memoire.d.ts",
+        "default": "./dist/file/memoire.js"
+      },
+      "require": {
+        "types": "./dist/file/memoire.d.cts",
+        "default": "./dist/file/memoire.cjs"
       }
     },
     "./envoi/limite": {

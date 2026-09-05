@@ -1222,8 +1222,9 @@ Cinq choses, et la quatrième est celle qu'on découvre trop tard.
    n'importe où. Le contenu des messages passe alors par un serveur que vous ne
    tenez pas — or un SMS de relance porte un nom, un montant et un lien signé.
 
-   Il n'y a pas de bonne réponse générale. Il y a la vôtre, et elle dépend
-   d'où tourne votre passage quotidien.
+   **Ou aucune des deux** : depuis la 0.18.0, l'appareil peut appeler votre
+   serveur au lieu d'être appelé — voir « La file » plus bas. Le NAT cesse
+   alors d'être un problème, sans tiers et quel que soit votre hébergement.
 
 5. **La configuration**, puis `verifierEnvoi()` au démarrage — il nomme le
    champ qui manque au lieu de laisser la passerelle répondre 401 le troisième
@@ -1307,6 +1308,121 @@ Le courriel ne coûte rien, ne suspend aucune SIM, et ne dépend pas d'un
 téléphone posé sur une étagère. C'est pour cela que le checkout public exige une
 adresse : sans elle, chaque relance de cet abonné consomme la ressource la plus
 fragile du système.
+
+## La file : inverser le sens de la connexion
+
+C'est la réponse au mur décrit plus haut. Une passerelle SMS locale vit derrière
+une box, sur une adresse privée ; le serveur du marchand vit chez Vercel ou dans
+un datacenter européen.
+
+```
+serveur → téléphone     bloqué par le NAT, partout, toujours
+téléphone → serveur     sortant, donc traversant partout
+```
+
+Le passage quotidien n'appelle donc plus personne : il **dépose**. L'appareil du
+marchand vient chercher, émet par sa SIM, et rapporte.
+
+```ts
+import { fileEnMemoire } from "ndank/file/memoire";
+import { versLaFile } from "ndank/file/transporteur";
+import { routeurFile } from "ndank/file/routeur";
+
+const file = fileEnMemoire();            // en production : une table
+
+const sms = versLaFile({ file });        // le transporteur du passage
+const routeur = routeurFile({ file, jeton: process.env.NDANK_FILE_JETON });
+```
+
+```
+GET  /attente    → les messages à émettre, après attente si la file est vide
+POST /accuses    → ce qu'ils sont devenus
+```
+
+**L'hébergement redevient libre.** Serverless, conteneur, VPS à Francfort : c'est
+l'appareil qui appelle, donc peu importe où l'on est appelé. Et rien ne transite
+par un tiers — le message ne quitte l'infrastructure du marchand qu'au moment où
+la radio l'émet.
+
+### Du vrai long-polling, et la différence décide de ce qu'on peut faire
+
+Une interrogation toutes les trente secondes suffit pour des relances de nuit.
+Elle ne suffit pas pour un code de connexion : quelqu'un qui regarde son écran
+en attendant six chiffres ne comprendra pas trente secondes de silence.
+
+Ici, l'appareil ouvre **une** requête que le serveur garde suspendue jusqu'à
+vingt-cinq secondes et libère **à l'instant** où un message est déposé. La
+latence tombe à quelques centaines de millisecondes, et le code SMS devient
+possible sans WebSocket, sans relais, sans rien à opérer.
+
+**On sonde la file plutôt que d'écouter un événement**, et c'est délibéré. Un
+émetteur en mémoire serait plus élégant et faux dans le cas courant : le passage
+quotidien tourne dans un cron, souvent un autre processus que le serveur web,
+parfois une autre machine. La requête resterait suspendue pendant que les
+messages s'empilent à côté.
+
+Le coût dépend de l'hébergement : tenir une requête ouverte est gratuit sur un
+serveur persistant, et facturé sur du serverless. `attenteMax: 0` rend alors la
+main immédiatement, et la route redevient un simple sondage.
+
+### Le bail, et ce qu'il empêche de perdre
+
+C'est la seule exigence subtile du port, et s'en écarter perd des messages en
+silence.
+
+Un appareil qui prend dix messages puis meurt — batterie, réseau, processus tué
+— n'émettra rien et n'acquittera rien. `prendre` pose donc un **bail** : les
+messages sont réservés, et redeviennent disponibles au bout de quelques minutes.
+
+La remise est ainsi « au moins une fois » plutôt que « au plus une fois ». Un
+abonné peut recevoir un rappel en double si l'appareil meurt entre l'émission et
+l'accusé — **et pour une relance, c'est le bon sens** : mieux vaut un doublon
+qu'un abonné jamais prévenu.
+
+### Un message qui vieillit dit le contraire de ce qu'il devait dire
+
+Chaque dépôt porte une péremption, six heures par défaut. Ce n'est pas une durée
+technique, c'est une durée éditoriale.
+
+Un téléphone rallumé après trois jours viderait sa file d'un coup : l'abonné
+recevrait « accès coupé dans 7 jours » le jour où son accès est déjà coupé, puis
+« dernier rappel » après avoir payé. **Mieux vaut qu'un message meure que
+d'arriver faux.**
+
+### La profondeur de la file voit ce qu'aucun autre signal ne voyait
+
+C'est le gain qu'on n'attendait pas, et il ferme une lacune que ce README
+décrivait comme non couverte.
+
+La panne d'une passerelle locale était invisible jusqu'au passage suivant : il
+fallait qu'un lot entier d'envois échoue pour que `bilan()` s'en aperçoive,
+c'est-à-dire vingt-quatre heures plus tard.
+
+Une file renverse cela. **Personne ne vient chercher se voit tout de suite**, et
+sans qu'un seul envoi ait eu à échouer :
+
+```
+[ALERTE]  31 SMS attendent depuis 90 min.
+          Plus personne ne vient les chercher. L'appareil est éteint, hors
+          réseau, ou son jeton ne correspond plus. Les messages expireront
+          d'eux-mêmes plutôt que d'arriver faux — mais les abonnés ne seront
+          pas prévenus.
+```
+
+Branchez `fileSms` sur les signaux de `bilan()` pour l'obtenir. En dessous de
+dix minutes d'attente, il ne dit rien : une file qui bouge est l'état normal.
+
+### Ce qui reste à écrire
+
+`fileEnMemoire` vit dans un processus : deux instances derrière un répartiteur
+ont deux files, et un redémarrage vide la sienne. Elle sert à éprouver le chemin
+complet sans base ni téléphone — **pas à tenir une production**.
+
+Un hôte du niveau 2 la remplace par une table ; le port ne change pas.
+L'implémentation Prisma n'est pas encore écrite.
+
+Et l'agent qui tourne sur le téléphone reste à faire : aujourd'hui, la boucle
+« demander, émettre, acquitter » n'a pas de client officiel.
 
 ## Envoyer moins vite, pour continuer à envoyer
 

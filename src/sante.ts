@@ -72,6 +72,7 @@ export interface Constat {
     | "PAIEMENTS_NON_COMPTES"
     | "SIGNATURES_REFUSEES"
     | "INJOIGNABLES"
+    | "FILE_SMS"
     | "LOT_PLEIN"
     | "ECHECS_PASSAGE"
     | "PASSERELLES"
@@ -118,6 +119,25 @@ export interface Signaux {
 
   /** Ce qui manque au câblage des passerelles. Voir `verifierEnvoi`. */
   passerelles?(): Promise<readonly string[]>;
+
+  /**
+   * L'état de la file des SMS, quand l'hôte en a une.
+   *
+   * ═══════════════════════════════════════════════════════════════════════
+   * C'EST LE SEUL SIGNAL QUI VOIT LA PANNE AVANT LE PASSAGE SUIVANT
+   *
+   * La panne d'une passerelle locale — téléphone éteint, réseau coupé — était
+   * invisible jusqu'ici : il fallait qu'un lot entier d'envois échoue pour
+   * qu'on s'en aperçoive, c'est-à-dire vingt-quatre heures plus tard.
+   *
+   * Une file renverse cela. Personne ne vient chercher **se voit tout de
+   * suite**, et sans qu'un seul envoi ait eu à échouer.
+   */
+  fileSms?(maintenant: Date): Promise<{
+    enAttente: number;
+    enCours: number;
+    attenteMax: number | null;
+  }>;
 }
 
 export interface ReglagesBilan extends ReglagesSante {
@@ -325,6 +345,40 @@ export async function bilan(
         quoiFaire:
           "Ni adresse, ni numéro, ni appareil. Ils arriveront à échéance sans " +
           "avoir été prévenus une seule fois.",
+      });
+    });
+  }
+
+  // ── la file des SMS ───────────────────────────────────────────────────────
+  if (signaux.fileSms) {
+    await isoler(constats, "FILE_SMS", async () => {
+      const f = await signaux.fileSms!(maintenant);
+      if (f.enAttente === 0 && f.enCours === 0) return;
+
+      // Une file qui bouge est normale : l'appareil vient toutes les quelques
+      // secondes. Ce qui alerte, c'est l'âge du plus ancien — il dit depuis
+      // combien de temps plus personne n'est venu.
+      const vieux = f.attenteMax ?? 0;
+
+      if (vieux < 600) {
+        constats.push({
+          quoi: "FILE_SMS",
+          gravite: "RIEN",
+          titre: `${f.enAttente} SMS en attente, le plus ancien depuis ${vieux} s.`,
+          quoiFaire: "Rien à faire : l'appareil vient les chercher.",
+        });
+        return;
+      }
+
+      constats.push({
+        quoi: "FILE_SMS",
+        gravite: vieux >= 3600 ? "ALERTE" : "ATTENTION",
+        titre: `${f.enAttente} SMS attendent depuis ${Math.round(vieux / 60)} min.`,
+        quoiFaire:
+          "Plus personne ne vient les chercher. L'appareil est éteint, hors " +
+          "réseau, ou son jeton ne correspond plus. Les messages expireront " +
+          "d'eux-mêmes plutôt que d'arriver faux — mais les abonnés ne seront " +
+          "pas prévenus.",
       });
     });
   }

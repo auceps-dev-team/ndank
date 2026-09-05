@@ -6,6 +6,62 @@ le reste.
 
 ---
 
+## 0.18.0
+
+### Ajouté
+
+**`ndank/file`** — la file d'attente des SMS, et l'inversion du sens de la
+connexion.
+
+Une passerelle SMS locale vit derrière une box, sur une adresse privée ; le
+serveur du marchand vit chez Vercel ou dans un datacenter européen. On ne perce
+pas un NAT depuis l'extérieur sans VPN ni port ouvert, et demander cela à un
+marchand revenait à ne pas proposer la fonction.
+
+Le passage quotidien ne joint donc plus personne : il dépose. L'appareil vient
+chercher, émet, et rapporte. **L'hébergement redevient libre** — serverless,
+conteneur, VPS à Francfort — et rien ne transite par un tiers.
+
+**Du vrai long-polling**, et la différence décide de ce qu'on peut faire : la
+requête est suspendue jusqu'à vingt-cinq secondes et libérée à l'instant où un
+message arrive. Quelques centaines de millisecondes, donc le code SMS devient
+possible sans WebSocket ni relais.
+
+On sonde la file plutôt que d'écouter un événement, délibérément : le passage
+tourne dans un cron, souvent un autre processus que le serveur web. Un émetteur
+en mémoire ne franchit pas cette frontière, et la requête resterait suspendue
+pendant que les messages s'empilent à côté.
+
+**Le bail** est la seule exigence subtile du port. Un appareil qui prend dix
+messages puis meurt n'émettra rien et n'acquittera rien ; sans bail, ils
+seraient perdus en silence. La remise est donc « au moins une fois » — mieux
+vaut un rappel en double qu'un abonné jamais prévenu.
+
+**La péremption** est une durée éditoriale, pas technique. Un téléphone rallumé
+après trois jours viderait sa file d'un coup, et l'abonné recevrait « accès
+coupé dans 7 jours » le jour où il est coupé. Mieux vaut qu'un message meure que
+d'arriver faux.
+
+### Ce que cela ferme
+
+**La panne d'une passerelle locale se voit enfin tout de suite.** Le README la
+décrivait comme non couverte : il fallait qu'un lot entier échoue pour que
+`bilan()` s'en aperçoive, vingt-quatre heures plus tard.
+
+Une file renverse cela — personne ne vient chercher se voit immédiatement, sans
+qu'un seul envoi ait eu à échouer. Nouveau constat `FILE_SMS`, gradué :
+silencieux sous dix minutes d'attente, `ATTENTION` ensuite, `ALERTE` au-delà
+d'une heure.
+
+### Non écrit
+
+`fileEnMemoire` sert à éprouver le chemin complet sans base ni téléphone, pas à
+tenir une production : elle vit dans un processus et se vide au redémarrage.
+L'implémentation Prisma reste à faire, et l'agent qui tourne sur le téléphone
+aussi.
+
+---
+
 ## 0.17.1
 
 ### Documenté
