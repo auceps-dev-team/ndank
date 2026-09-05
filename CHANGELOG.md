@@ -6,6 +6,51 @@ le reste.
 
 ---
 
+## 0.14.0
+
+L'adaptateur Flutterwave ne s'était jamais authentifié une seule fois.
+
+### Changement incompatible
+
+**`ConfigFlutterwave` prend `clientId` et `clientSecret`** au lieu de
+`cleSecrete`. Ce n'est pas un renommage : la v4 n'accepte plus qu'on présente
+une clé secrète en `Bearer`. On échange un couple identifiant/secret contre un
+jeton d'accès valable dix minutes, et c'est ce jeton qui voyage.
+
+Un hôte qui passait `cleSecrete` ne verra plus l'appel échouer autrement
+qu'avant — il échouait déjà, silencieusement, à chaque fois.
+
+### Corrigé
+
+**L'authentification n'existait pas.** L'adaptateur envoyait
+`Authorization: Bearer <cleSecrete>` en direct. La v4 exige un passage préalable
+par `idp.flutterwave.com`. Le jeton est désormais échangé, gardé en mémoire
+entre les trois appels d'une souscription, et renouvelé trente secondes avant
+son échéance — sans cette marge, il peut expirer entre le moyen de paiement et
+la charge, c'est-à-dire au moment précis où l'on parle d'argent.
+
+**Les adresses étaient fausses.** On visait `api.flutterwave.cloud/…`, qui
+n'existe pas. La documentation donne deux hôtes distincts,
+`developersandbox-api.flutterwave.com` et `f4bexperience.flutterwave.com` — la
+différence est invisible à la lecture et absolue à l'exécution.
+
+**`X-Idempotency-Key` et `X-Trace-Id` manquaient.** La clé d'idempotence dérive
+de la référence, et non du hasard : une clé tirée au sort satisferait la
+validation et ne protégerait de rien, puisque deux passages simultanés
+ouvriraient deux charges chacune avec sa clé unique.
+
+### Éprouvé
+
+**Les unités de Flutterwave sont bien majeures.** La documentation v4 donne
+`{ "currency": "GHS", "amount": 200 }` pour deux cents cedis. La case #8 tombe.
+
+**Rien de tout cela n'aurait pu se voir en relisant du code.** Les 628 tests
+passaient, et ils passaient contre un faux `Http` qui répond à n'importe quelle
+adresse sans regarder un en-tête. Il a fallu ouvrir la documentation officielle
+et la comparer ligne à ligne.
+
+---
+
 ## 0.13.3
 
 ### Corrigé

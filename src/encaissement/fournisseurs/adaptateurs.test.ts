@@ -60,6 +60,9 @@ describe("Flutterwave", () => {
 
   it("enchaîne client, moyen de paiement et charge, et transmet notre référence", async () => {
     const f = fauxHttp([
+      // Le premier appel n'est pas le nôtre : la v4 échange d'abord les
+      // identifiants contre un jeton d'accès de dix minutes.
+      { corps: { access_token: "jwt-de-test", expires_in: 600 } },
       { corps: { data: { id: "cus_1" } } },
       { corps: { data: { id: "pmd_1" } } },
       {
@@ -77,19 +80,33 @@ describe("Flutterwave", () => {
     ]);
 
     const invitation = await flutterwave({
-      cleSecrete: "sk",
+      clientId: "sk",
+      clientSecret: "sk",
       secretWebhook: "h",
       http: f.http,
     }).inviter(DEMANDE);
 
-    expect(f.vues).toHaveLength(3);
-    expect(f.vues[0]!.url).toContain("/customers");
-    expect(f.vues[1]!.url).toContain("/payment-methods");
-    expect(f.vues[2]!.url).toContain("/charges");
+    expect(f.vues).toHaveLength(4);
+    expect(f.vues[0]!.url).toContain("openid-connect/token");
+    expect(f.vues[1]!.url).toContain("/customers");
+    expect(f.vues[2]!.url).toContain("/payment-methods");
+    expect(f.vues[3]!.url).toContain("/charges");
+
+    // L'hôte est celui de la documentation, et non un chemin sur un autre
+    // hôte — la confusion a coûté toutes les 0.13.x.
+    expect(f.vues[1]!.url).toContain("developersandbox-api.flutterwave.com");
+
+    // Un seul échange de jeton pour les trois appels : il vaut dix minutes,
+    // en redemander un à chaque fois doublerait les allers-retours.
+    expect(f.vues.filter((v) => v.url.includes("openid-connect"))).toHaveLength(1);
+
+    // La clé d'idempotence dérive de la référence : un rejeu retombe dessus,
+    // et Flutterwave rend la charge existante au lieu d'en ouvrir une seconde.
+    expect(f.vues[3]!.entetes["X-Idempotency-Key"]).toBe("2026-02-09-charge");
 
     // La référence transmise est notre clé de cycle : rejouer le passage ne
     // crée pas une seconde charge.
-    expect(JSON.parse(f.vues[2]!.corps!).reference).toBe("2026-02-09");
+    expect(JSON.parse(f.vues[3]!.corps!).reference).toBe("2026-02-09");
 
     expect(invitation.etat).toBe("EN_ATTENTE");
     expect(invitation.url).toBeNull();
@@ -105,7 +122,8 @@ describe("Flutterwave", () => {
     const f = fauxHttp([]);
 
     await expect(
-      flutterwave({ cleSecrete: "sk", secretWebhook: "h", http: f.http }).inviter({
+      flutterwave({ clientId: "sk",
+      clientSecret: "sk", secretWebhook: "h", http: f.http }).inviter({
         ...DEMANDE,
         devise: "GHS",
       }),
@@ -118,7 +136,8 @@ describe("Flutterwave", () => {
   it("refuse un abonné sans numéro, en le disant", async () => {
     const f = fauxHttp([]);
     await expect(
-      flutterwave({ cleSecrete: "sk", secretWebhook: "h", http: f.http }).inviter({
+      flutterwave({ clientId: "sk",
+      clientSecret: "sk", secretWebhook: "h", http: f.http }).inviter({
         ...DEMANDE,
         abonne: { ...DEMANDE.abonne, telephone: null },
       }),
@@ -140,7 +159,8 @@ describe("Flutterwave", () => {
     const signature = createHmac("sha256", secret).update(corps, "utf8").digest("hex");
 
     const issue = flutterwave({
-      cleSecrete: "sk",
+      clientId: "sk",
+      clientSecret: "sk",
       secretWebhook: secret,
       http: fauxHttp([]).http,
     }).lireWebhook(corps, { "flutterwave-signature": signature });
@@ -156,7 +176,8 @@ describe("Flutterwave", () => {
     // ressemble à un webhook perdu, et personne n'irait voir.
     expect(() =>
       flutterwave({
-        cleSecrete: "sk",
+        clientId: "sk",
+      clientSecret: "sk",
         secretWebhook: "h",
         http: fauxHttp([]).http,
       }).lireWebhook("{}", { "flutterwave-signature": "0".repeat(64) }),
@@ -170,7 +191,8 @@ describe("Flutterwave", () => {
 
     expect(
       flutterwave({
-        cleSecrete: "sk",
+        clientId: "sk",
+      clientSecret: "sk",
         secretWebhook: secret,
         http: fauxHttp([]).http,
       }).lireWebhook(corps, { "flutterwave-signature": signature }),
@@ -180,10 +202,14 @@ describe("Flutterwave", () => {
   it("ne conclut pas à l'échec sur un statut qu'il ne connaît pas", async () => {
     // Traiter un état inconnu comme un échec couperait l'accès de quelqu'un qui
     // a peut-être payé.
-    const f = fauxHttp([{ corps: { data: { status: "quelque_chose_de_neuf" } } }]);
+    const f = fauxHttp([
+      { corps: { access_token: "jwt-de-test", expires_in: 600 } },
+      { corps: { data: { status: "quelque_chose_de_neuf" } } },
+    ]);
 
     const issue = await flutterwave({
-      cleSecrete: "sk",
+      clientId: "sk",
+      clientSecret: "sk",
       secretWebhook: "h",
       http: f.http,
     }).constater("2026-02-09");

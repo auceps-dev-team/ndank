@@ -129,7 +129,8 @@ export function fournisseur(
   switch (nom) {
     case "flutterwave":
       return flutterwave({
-        cleSecrete: s("cleSecrete"),
+        clientId: s("clientId"),
+        clientSecret: s("clientSecret"),
         secretWebhook: s("secretWebhook"),
         production: identifiants["production"] === true,
         http,

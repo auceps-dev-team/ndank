@@ -42,41 +42,80 @@ import { verifierFlutterwave } from "../signature";
  */
 
 /**
- * En combien de décimales Flutterwave compte — et ce point n'est PAS vérifié.
+ * En combien de décimales Flutterwave compte — **vérifié le 5 septembre 2026**.
  *
  * ════════════════════════════════════════════════════════════════════════════
- * CE QU'ON SAIT, ET CE QU'ON NE SAIT PAS
+ * DES UNITÉS MAJEURES, ET LA DOCUMENTATION LE MONTRE
  *
- * Paystack a été mesuré : il compte en centièmes quelle que soit la devise, ce
- * qui faisait facturer vingt francs pour deux mille. Flutterwave n'a pas pu
- * l'être — personne n'a fourni de clé de bac à sable.
+ * Longtemps supposé, jamais constaté. La documentation v4 de la charge en
+ * mobile money donne l'exemple sans ambiguïté :
  *
- * `0` traduit la lecture qu'on a de sa documentation : des unités **majeures**,
- * `amount: 2000` valant deux mille francs. C'est le contraire de Paystack.
+ *     { "currency": "GHS", "amount": 200, ... }
+ *
+ * — deux cents cedis, et non deux cedis. Le champ est décrit comme « the
+ * payment amount in decimals », minimum `0.01` : ce sont bien des unités
+ * majeures, exactement le contraire de Paystack qui compte en centièmes.
+ *
+ * `0` est donc juste. C'était la case #8 de « ce qui n'est pas encore
+ * éprouvé », et elle tombe sur lecture de la documentation — reste à la
+ * confirmer sur le fil, ce qu'un tableau de bord marchand seul peut faire.
  *
  * ════════════════════════════════════════════════════════════════════════════
- * POURQUOI CE DOUTE NE PEUT PAS MORDRE LE MARCHÉ PRINCIPAL
+ * ET LE FRANC CFA NE POUVAIT PAS LE DIRE
  *
- * Pour le franc CFA, les deux lectures coïncident : l'ISO 4217 lui donne zéro
- * décimale, donc `versFournisseur(2000, "XOF", 0)` rend `2000` — la même chose
- * qu'avant ce fichier.
+ * Pour le XOF, les deux lectures coïncident : l'ISO 4217 lui donne zéro
+ * décimale, donc `versFournisseur(2000, "XOF", 0)` rend `2000` dans tous les
+ * cas. L'essai le plus naturel de ce projet est précisément celui qui ne
+ * départage rien.
  *
- * L'incertitude ne concerne donc que les devises à deux décimales — cedi,
- * naira, shilling — chez un hôte Flutterwave. Et si elle se révélait fausse,
- * elle **sous-facturerait** : `2000` en GHS partirait comme 20 cedis au lieu de
- * 2 000 pesewas. C'est le sens dans lequel on préfère se tromper.
- *
- * `npm run bac-a-sable` le vérifie dès qu'une clé Flutterwave est posée : il
- * compare ce qu'on envoie à ce que la charge rapporte.
+ * `npm run bac-a-sable` prend donc NGN par défaut, où deux cent mille unités
+ * mineures partent comme deux mille — et prévient quand on lui donne une
+ * devise qui n'apprend rien.
  */
 const DECIMALES_FLUTTERWAVE = 0;
 
-const BASE = "https://api.flutterwave.cloud/developersandbox";
-const BASE_PROD = "https://api.flutterwave.cloud/f4bexperience";
+/**
+ * Les adresses, vérifiées contre la documentation le 5 septembre 2026.
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ * ELLES ÉTAIENT FAUSSES JUSQU'À LA 0.14.0
+ *
+ * On visait `api.flutterwave.cloud/developersandbox`, qui n'existe pas. La
+ * documentation donne deux hôtes distincts, et non un hôte avec un chemin — la
+ * différence est invisible à la lecture et absolue à l'exécution.
+ *
+ * Personne ne l'avait vu parce que rien n'avait jamais appelé : les tests
+ * tournent contre un faux `Http`, et un faux répond à n'importe quelle adresse.
+ */
+const BASE = "https://developersandbox-api.flutterwave.com";
+const BASE_PROD = "https://f4bexperience.flutterwave.com";
+
+/** Là où l'on échange ses identifiants contre un jeton. Commun aux deux. */
+const IDP =
+  "https://idp.flutterwave.com/realms/flutterwave/protocol/openid-connect/token";
 
 export interface ConfigFlutterwave {
-  /** Clé secrète du tableau de bord Flutterwave. */
-  cleSecrete: string;
+  /**
+   * L'identifiant client, du tableau de bord Flutterwave.
+   *
+   * ═══════════════════════════════════════════════════════════════════════
+   * CE N'EST PLUS UNE CLÉ SECRÈTE, ET C'EST UN CHANGEMENT DE FOND
+   *
+   * La v3 portait un `FLWSECK_TEST-…` qu'on présentait tel quel en `Bearer`.
+   * La v4 ne l'accepte plus : on échange un couple identifiant/secret contre
+   * un jeton d'accès valable **dix minutes**, et c'est ce jeton qui voyage.
+   *
+   * L'adaptateur envoyait le secret en direct jusqu'à la 0.14.0. Il ne s'est
+   * jamais authentifié une seule fois — et rien ne l'a signalé, parce que les
+   * tests répondent depuis un faux qui ne vérifie aucun en-tête.
+   *
+   * L'identifiant marchand du tableau de bord (`100837168`, ou le
+   * `200772265` du mode test) n'est **pas** cela non plus : il désigne le
+   * compte, il n'authentifie rien.
+   */
+  clientId: string;
+  /** Le secret client, qui l'accompagne. Jamais envoyé ailleurs qu'à l'IDP. */
+  clientSecret: string;
   /** Le « secret hash » déclaré côté webhooks. Sans lui, on ne peut rien vérifier. */
   secretWebhook: string;
   /** `false` par défaut : on ne part pas en production par accident. */
@@ -85,7 +124,11 @@ export interface ConfigFlutterwave {
 }
 
 /** Les champs que l'hôte doit remplir. Sert à la validation du registre. */
-export const CHAMPS_FLUTTERWAVE = ["cleSecrete", "secretWebhook"] as const;
+export const CHAMPS_FLUTTERWAVE = [
+  "clientId",
+  "clientSecret",
+  "secretWebhook",
+] as const;
 
 /**
  * Indicatif → réseau et devise attendue.
@@ -158,6 +201,69 @@ export function flutterwave(config: ConfigFlutterwave): Encaissement {
   const http = config.http ?? httpParDefaut;
   const base = config.production ? BASE_PROD : BASE;
 
+  /**
+   * Le jeton d'accès, gardé entre deux appels.
+   *
+   * ════════════════════════════════════════════════════════════════════════════
+   * IL EST EN MÉMOIRE, ET C'EST SUFFISANT ICI
+   *
+   * Une souscription fait trois appels — client, moyen de paiement, charge — et
+   * en redemander un à chaque fois multiplierait par deux le nombre d'allers-
+   * retours pour rien.
+   *
+   * En mémoire de processus : deux instances en demandent chacune un, ce qui
+   * est sans conséquence. Flutterwave ne les invalide pas l'un l'autre, et l'on
+   * évite ainsi d'exiger un magasin partagé pour une valeur qui vit dix
+   * minutes.
+   *
+   * On renouvelle trente secondes **avant** l'échéance. Sans cette marge, un
+   * jeton obtenu à la première étape peut expirer entre le moyen de paiement et
+   * la charge — et l'on échouerait au moment précis où l'on parle d'argent.
+   */
+  let jeton: { valeur: string; expireA: number } | null = null;
+
+  async function jetonDAcces(): Promise<string> {
+    if (jeton !== null && Date.now() < jeton.expireA) return jeton.valeur;
+
+    const reponse = await http({
+      methode: "POST",
+      url: IDP,
+      entetes: { "Content-Type": "application/x-www-form-urlencoded" },
+      corps: new URLSearchParams({
+        client_id: config.clientId,
+        client_secret: config.clientSecret,
+        grant_type: "client_credentials",
+      }).toString(),
+    });
+
+    if (reponse.statut < 200 || reponse.statut >= 300) {
+      throw new ErreurFournisseur(
+        "flutterwave",
+        reponse.statut,
+        reponse.corps,
+        "Flutterwave a refusé les identifiants. Ce sont `clientId` et " +
+          "`clientSecret` du tableau de bord — ni une clé `FLWSECK_…`, ni " +
+          "l'identifiant marchand.",
+      );
+    }
+
+    const charge = JSON.parse(reponse.corps) as Record<string, unknown>;
+    const valeur = charge["access_token"];
+    if (typeof valeur !== "string" || valeur === "") {
+      throw new ErreurFournisseur(
+        "flutterwave",
+        reponse.statut,
+        reponse.corps,
+        "aucun `access_token` dans la réponse de l'IDP",
+      );
+    }
+
+    const secondes = Number(charge["expires_in"] ?? 600);
+    jeton = { valeur, expireA: Date.now() + Math.max(0, secondes - 30) * 1000 };
+
+    return valeur;
+  }
+
   async function appeler(
     chemin: string,
     methode: "GET" | "POST",
@@ -168,7 +274,7 @@ export function flutterwave(config: ConfigFlutterwave): Encaissement {
       methode,
       url: `${base}${chemin}`,
       entetes: {
-        Authorization: `Bearer ${config.cleSecrete}`,
+        Authorization: `Bearer ${await jetonDAcces()}`,
         "Content-Type": "application/json",
         ...entetesEnPlus,
       },
@@ -232,13 +338,38 @@ export function flutterwave(config: ConfigFlutterwave): Encaissement {
         );
       }
 
+      /**
+       * Les en-têtes que la v4 exige sur chaque écriture.
+       *
+       * ═══════════════════════════════════════════════════════════════════
+       * LA CLÉ D'IDEMPOTENCE DÉRIVE DE LA RÉFÉRENCE, ET NON DU HASARD
+       *
+       * C'est tout l'enjeu. Une clé tirée au sort à chaque appel satisferait
+       * la validation de Flutterwave et ne protégerait de rien : deux passages
+       * simultanés créeraient deux charges, chacune avec sa clé unique.
+       *
+       * La référence, elle, porte déjà le cycle et l'abonnement — c'est notre
+       * garantie d'idempotence à nous. En la réutilisant ici, un rejeu retombe
+       * sur la même clé, et Flutterwave rend la charge existante au lieu d'en
+       * ouvrir une seconde.
+       *
+       * Le suffixe distingue les trois étapes : sans lui, la création du moyen
+       * de paiement se verrait rendre le client de l'étape précédente.
+       */
+      const cles = (etape: string): Record<string, string> => ({
+        "X-Idempotency-Key": `${demande.reference}-${etape}`,
+        // Le traçage, lui, doit changer à chaque appel : c'est ce qui permet au
+        // support de retrouver UNE tentative et non toutes.
+        "X-Trace-Id": `${demande.reference}-${etape}-${Date.now().toString(36)}`,
+      });
+
       // 1 — le client.
       const client = donnees(
         await appeler("/customers", "POST", {
           email: demande.abonne.courriel ?? undefined,
           name: { first: demande.abonne.nom ?? "Abonné" },
           phone: { country_code: decoupe.indicatif, number: decoupe.numero },
-        }),
+        }, cles("client")),
       );
 
       // 2 — le moyen de paiement. Le réseau est laissé au fournisseur : il le
@@ -250,7 +381,7 @@ export function flutterwave(config: ConfigFlutterwave): Encaissement {
             country_code: decoupe.indicatif,
             phone_number: decoupe.numero,
           },
-        }),
+        }, cles("moyen")),
       );
 
       // 3 — la charge. `reference` est notre clé de cycle : rejouer le passage
@@ -268,7 +399,7 @@ export function flutterwave(config: ConfigFlutterwave): Encaissement {
           reference: demande.reference,
           redirect_url: demande.retour,
           meta: { libelle: demande.libelle },
-        }),
+        }, cles("charge")),
       );
 
       const suite = charge["next_action"] as Record<string, unknown> | undefined;

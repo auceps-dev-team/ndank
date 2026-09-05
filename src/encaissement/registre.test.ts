@@ -51,7 +51,11 @@ describe("la configuration d'un fournisseur", () => {
 
   it("construit les trois adaptateurs branchés", () => {
     expect(
-      fournisseur("flutterwave", { cleSecrete: "sk", secretWebhook: "h" }, RIEN).nom,
+      fournisseur(
+        "flutterwave",
+        { clientId: "id", clientSecret: "sk", secretWebhook: "h" },
+        RIEN,
+      ).nom,
     ).toBe("flutterwave");
 
     expect(fournisseur("paystack", { cleSecrete: "sk" }, RIEN).nom).toBe("paystack");

@@ -1205,7 +1205,7 @@ schéma à un vrai PostgreSQL (Prisma 6.19.3, branche `Ndank-Baobart-Test`).
       est identique avant et après. Le retour arrière est bien celui de
       PostgreSQL.
 
-Restent quatre paris, dont deux entamés.
+Restent trois paris, dont deux entamés.
 
 - [ ] **Les quatre passerelles d'envoi.** Resend, Brevo, Twilio et Expo sont
       écrites d'après leur documentation. **Partiellement levé** :
@@ -1215,25 +1215,37 @@ Restent quatre paris, dont deux entamés.
       réponse a la forme que l'adaptateur suppose.
 - [ ] **Flutterwave et MTN.** Seul Paystack a tourné en bac à sable — et c'est
       lui qui a révélé les deux erreurs les plus coûteuses du dépôt.
-      **Partiellement levé** : les deux adaptateurs sont bien inscrits au
-      registre avec les champs qu'ils exigent, et refusent de démarrer sans.
-      Le comportement réel de `POST /transactions/initiate` et de
-      `POST /collection/v1_0/requesttopay` reste supposé.
-- [ ] **Les unités de Flutterwave.** On suppose des unités **majeures**, sans
-      l'avoir vérifié. C'est exactement la forme de l'erreur de facteur 100
-      déjà rencontrée sur Paystack, où `XOF 20.00` s'affichait pour 2 000 F.
-      Elle n'a été trouvée qu'en **regardant un vrai tableau de bord marchand**,
-      jamais en relisant le convertisseur. Lire du code ne prouve pas ce qui
-      part sur le fil.
 
-      **Et l'essai le plus naturel ne peut pas y répondre.** `versFournisseur`
-      calcule `decimalesFournisseur - exposant(devise)` : pour Flutterwave zéro
-      décimale, pour le franc CFA zéro décimale, donc l'écart est nul et la
-      conversion est l'**identité**. Un paiement en XOF part comme 2 000 que
-      l'hypothèse soit juste ou fausse. Il faut une devise à décimales — en NGN,
-      200 000 mineures partent comme 2 000, et le tableau de bord tranche.
-      `npm run bac-a-sable` prend donc NGN par défaut et prévient quand on lui
-      donne une devise qui ne départage pas.
+      **Le pari a mordu, le 5 septembre 2026.** Confronté à la documentation
+      officielle, l'adaptateur Flutterwave était **inutilisable** : mauvaise
+      adresse de base, et surtout aucune authentification — il présentait une
+      clé secrète en `Bearer` là où la v4 exige un échange OAuth préalable. Il
+      ne s'était jamais connecté une seule fois, et rien ne l'avait signalé :
+      un faux `Http` répond à n'importe quelle adresse sans regarder un
+      en-tête. Corrigé en 0.14.0.
+
+      Ce qui était juste : le flux en trois temps et le corps de la charge.
+      Ce qui reste supposé : MTN, et le comportement réel de Flutterwave
+      maintenant qu'il peut enfin s'authentifier.
+- [x] **Les unités de Flutterwave.** On supposait des unités **majeures**, sans
+      l'avoir vérifié — la forme exacte de l'erreur de facteur 100 déjà
+      rencontrée sur Paystack.
+
+      **La supposition était juste**, et la documentation v4 le montre sans
+      ambiguïté : `{ "currency": "GHS", "amount": 200 }` vaut deux cents cedis,
+      le champ étant décrit comme « the payment amount in decimals », minimum
+      `0.01`. C'est l'inverse de Paystack, qui compte en centièmes.
+
+      Cochée sur lecture de la documentation, pas sur le fil — c'est le seul
+      des huit points où lire suffisait, parce qu'un exemple chiffré ne se
+      prête pas à deux lectures. Un débit sandbox reste la confirmation.
+
+      **Et l'essai le plus naturel n'aurait rien appris.** Pour le franc CFA,
+      `versFournisseur` est l'identité : zéro décimale des deux côtés, donc
+      2 000 part comme 2 000 quelle que soit la convention. `npm run
+      bac-a-sable` prend NGN par défaut et prévient quand la devise ne
+      départage pas.
+
 - [ ] **`POST /projection`.** Jamais atteint un serveur, puisque
       [Ndank App](https://github.com/auceps-dev-team/Ndank-app) ne le sert pas
       encore. Le client, lui, est importable et compose ses lots.
