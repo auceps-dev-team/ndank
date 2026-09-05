@@ -6,6 +6,61 @@ le reste.
 
 ---
 
+## 0.15.0
+
+Flutterwave fonctionne. Éprouvé avec de vraies clés, pas déduit d'une lecture.
+
+### Changement incompatible
+
+**`ConfigFlutterwave` reprend `cleSecrete`**, et abandonne les `clientId` /
+`clientSecret` que la 0.14.0 avait introduits.
+
+La 0.14.0 avait porté l'adaptateur sur la **v4** de Flutterwave, en suivant la
+documentation la plus récente : deux hôtes distincts, un échange OAuth
+préalable, un flux en trois appels. C'était fidèle, et inutilisable. Le tableau
+de bord d'un marchand délivre des clés `FLWSECK_…`, et l'IDP de la v4 les
+refuse :
+
+```
+v4  idp.flutterwave.com  → 401  invalid_client
+v3  api.flutterwave.com  → 200
+```
+
+On ne choisit pas l'API la plus moderne, mais celle qu'un compte marchand peut
+réellement employer. Le travail v4 reste dans l'historique — il n'est pas perdu,
+il est prématuré.
+
+### Ajouté
+
+**Un refus de démarrer sur une clé de production non assumée.** La v3 n'a qu'une
+seule adresse : c'est le préfixe de la clé qui décide si l'on éprouve ou si l'on
+débite. Une clé recopiée du mauvais onglet prélève de l'argent réel sans qu'aucune
+configuration ne change d'apparence. L'adaptateur refuse donc une clé sans
+`_TEST` tant que `production: true` n'est pas posé — le seul endroit du dépôt
+où l'on préfère ne pas démarrer.
+
+**`reseauGhana`.** Le Ghana est le seul marché où la v3 réclame le réseau, et il
+ne se déduit pas du préfixe : la portabilité y est effective, donc un 024 n'est
+plus forcément MTN.
+
+**Un refus traduit.** La v3 répond `200` sur des erreurs, avec
+`{"status":"error"}` dans le corps. Ne regarder que le code HTTP ferait prendre
+un refus pour une charge ouverte — et l'abonné attendrait une invite qui ne
+viendrait jamais.
+
+### Éprouvé
+
+**Flutterwave passe.** L'invitation part, la référence revient, le constat
+retrouve la charge. Case #7 levée pour Flutterwave ; MTN reste ouvert.
+
+**Les unités sont majeures, et c'est mesuré.** Une charge de `amount: 2000` en
+XOF a rendu `charged_amount: 2000` et `app_fee: 40` — 2 % de deux mille francs.
+Une lecture en unités mineures aurait donné 0,4. Case #8 levée.
+
+**Cinq cases sur huit.**
+
+---
+
 ## 0.14.0
 
 L'adaptateur Flutterwave ne s'était jamais authentifié une seule fois.

@@ -1205,7 +1205,7 @@ schéma à un vrai PostgreSQL (Prisma 6.19.3, branche `Ndank-Baobart-Test`).
       est identique avant et après. Le retour arrière est bien celui de
       PostgreSQL.
 
-Restent trois paris, dont deux entamés.
+Restent trois paris, dont un à moitié levé.
 
 - [ ] **Les quatre passerelles d'envoi.** Resend, Brevo, Twilio et Expo sont
       écrites d'après leur documentation. **Partiellement levé** :
@@ -1213,38 +1213,49 @@ Restent trois paris, dont deux entamés.
       incomplète. Mais aucun `POST` réel n'a atteint `api.resend.com`,
       `api.brevo.com`, `api.twilio.com` ni `exp.host` — donc rien ne dit que la
       réponse a la forme que l'adaptateur suppose.
-- [ ] **Flutterwave et MTN.** Seul Paystack a tourné en bac à sable — et c'est
-      lui qui a révélé les deux erreurs les plus coûteuses du dépôt.
+- [ ] **Flutterwave et MTN.** Seul Paystack avait tourné en bac à sable — et
+      c'est lui qui a révélé les deux erreurs les plus coûteuses du dépôt.
 
-      **Le pari a mordu, le 5 septembre 2026.** Confronté à la documentation
-      officielle, l'adaptateur Flutterwave était **inutilisable** : mauvaise
-      adresse de base, et surtout aucune authentification — il présentait une
-      clé secrète en `Bearer` là où la v4 exige un échange OAuth préalable. Il
-      ne s'était jamais connecté une seule fois, et rien ne l'avait signalé :
-      un faux `Http` répond à n'importe quelle adresse sans regarder un
-      en-tête. Corrigé en 0.14.0.
+      **Flutterwave est levé, le 5 septembre 2026**, avec de vraies clés de
+      test : l'invitation part, la référence revient, le constat retrouve la
+      charge. Il a fallu deux corrections pour y arriver, et la seconde
+      annulait la première.
 
-      Ce qui était juste : le flux en trois temps et le corps de la charge.
-      Ce qui reste supposé : MTN, et le comportement réel de Flutterwave
-      maintenant qu'il peut enfin s'authentifier.
+      La 0.14.0 avait porté l'adaptateur sur la **v4** — la documentation la
+      plus récente, un échange OAuth, un flux en trois appels. Fidèle, et
+      inutilisable : le tableau de bord délivre des clés `FLWSECK_…`, et l'IDP
+      de la v4 les refuse. Mesuré, pas supposé :
+
+      ```
+      v4  idp.flutterwave.com  → 401  invalid_client
+      v3  api.flutterwave.com  → 200
+      ```
+
+      On ne choisit donc pas l'API la plus moderne, mais celle qu'un compte
+      marchand peut réellement employer. La 0.15.0 est en v3.
+
+      **MTN reste ouvert.**
+
 - [x] **Les unités de Flutterwave.** On supposait des unités **majeures**, sans
       l'avoir vérifié — la forme exacte de l'erreur de facteur 100 déjà
       rencontrée sur Paystack.
 
-      **La supposition était juste**, et la documentation v4 le montre sans
-      ambiguïté : `{ "currency": "GHS", "amount": 200 }` vaut deux cents cedis,
-      le champ étant décrit comme « the payment amount in decimals », minimum
-      `0.01`. C'est l'inverse de Paystack, qui compte en centièmes.
+      **La supposition était juste, et c'est mesuré.** Une charge réelle en bac
+      à sable, `amount: 2000` en XOF, a rendu :
 
-      Cochée sur lecture de la documentation, pas sur le fil — c'est le seul
-      des huit points où lire suffisait, parce qu'un exemple chiffré ne se
-      prête pas à deux lectures. Un débit sandbox reste la confirmation.
+      ```json
+      { "amount": 2000, "charged_amount": 2000, "app_fee": 40 }
+      ```
+
+      Quarante francs de commission sur deux mille, soit 2 %. Si Flutterwave
+      avait lu 2 000 comme des unités mineures — vingt francs — la commission
+      aurait été de 0,4. La documentation v4 le confirme par ailleurs :
+      `{ "currency": "GHS", "amount": 200 }` vaut deux cents cedis.
 
       **Et l'essai le plus naturel n'aurait rien appris.** Pour le franc CFA,
       `versFournisseur` est l'identité : zéro décimale des deux côtés, donc
-      2 000 part comme 2 000 quelle que soit la convention. `npm run
-      bac-a-sable` prend NGN par défaut et prévient quand la devise ne
-      départage pas.
+      2 000 part comme 2 000 quelle que soit la convention. Sans la commission
+      qui trahit l'échelle, il aurait fallu une devise à décimales.
 
 - [ ] **`POST /projection`.** Jamais atteint un serveur, puisque
       [Ndank App](https://github.com/auceps-dev-team/Ndank-app) ne le sert pas

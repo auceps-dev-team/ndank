@@ -58,21 +58,20 @@ describe("Flutterwave", () => {
     expect(decouperNumero("12")).toBeNull();
   });
 
-  it("enchaîne client, moyen de paiement et charge, et transmet notre référence", async () => {
+  it("charge en un seul appel, et transmet notre référence en `tx_ref`", async () => {
+    // La v3 fait d'un coup ce que la v4 demandait en trois — client, moyen de
+    // paiement, charge. Sur un passage de cinq cents abonnés, c'est mille
+    // allers-retours de moins.
     const f = fauxHttp([
-      // Le premier appel n'est pas le nôtre : la v4 échange d'abord les
-      // identifiants contre un jeton d'accès de dix minutes.
-      { corps: { access_token: "jwt-de-test", expires_in: 600 } },
-      { corps: { data: { id: "cus_1" } } },
-      { corps: { data: { id: "pmd_1" } } },
       {
         corps: {
-          data: {
-            id: "chg_1",
-            status: "pending",
-            next_action: {
-              type: "payment_instruction",
-              payment_instruction: { note: "Validez sur le 2250700000000" },
+          status: "success",
+          message: "Charge initiated",
+          data: { id: 10472878, tx_ref: "2026-02-09", status: "pending" },
+          meta: {
+            authorization: {
+              mode: "redirect",
+              redirect_url: "https://ravesandboxapi.flutterwave.com/…",
             },
           },
         },
@@ -80,38 +79,92 @@ describe("Flutterwave", () => {
     ]);
 
     const invitation = await flutterwave({
-      clientId: "sk",
-      clientSecret: "sk",
+      cleSecrete: "FLWSECK_TEST-essai",
       secretWebhook: "h",
       http: f.http,
     }).inviter(DEMANDE);
 
-    expect(f.vues).toHaveLength(4);
-    expect(f.vues[0]!.url).toContain("openid-connect/token");
-    expect(f.vues[1]!.url).toContain("/customers");
-    expect(f.vues[2]!.url).toContain("/payment-methods");
-    expect(f.vues[3]!.url).toContain("/charges");
+    expect(f.vues).toHaveLength(1);
+    expect(f.vues[0]!.url).toBe(
+      "https://api.flutterwave.com/v3/charges?type=mobile_money_franco",
+    );
 
-    // L'hôte est celui de la documentation, et non un chemin sur un autre
-    // hôte — la confusion a coûté toutes les 0.13.x.
-    expect(f.vues[1]!.url).toContain("developersandbox-api.flutterwave.com");
+    const corps = JSON.parse(f.vues[0]!.corps!);
 
-    // Un seul échange de jeton pour les trois appels : il vaut dix minutes,
-    // en redemander un à chaque fois doublerait les allers-retours.
-    expect(f.vues.filter((v) => v.url.includes("openid-connect"))).toHaveLength(1);
+    // `tx_ref` est notre clé de cycle : rejouer le passage retombe dessus, et
+    // Flutterwave refuse le doublon au lieu d'ouvrir une seconde charge.
+    expect(corps.tx_ref).toBe("2026-02-09");
 
-    // La clé d'idempotence dérive de la référence : un rejeu retombe dessus,
-    // et Flutterwave rend la charge existante au lieu d'en ouvrir une seconde.
-    expect(f.vues[3]!.entetes["X-Idempotency-Key"]).toBe("2026-02-09-charge");
+    // Le numéro part sans indicatif, le pays à côté — c'est ce que la v3 veut.
+    expect(corps.phone_number).toBe("0700000000");
+    expect(corps.country).toBe("CI");
 
-    // La référence transmise est notre clé de cycle : rejouer le passage ne
-    // crée pas une seconde charge.
-    expect(JSON.parse(f.vues[3]!.corps!).reference).toBe("2026-02-09");
+    // Unités majeures, mesurées le 5 septembre 2026 : `amount: 2000` en XOF a
+    // produit `charged_amount: 2000` et `app_fee: 40`, soit 2 % de deux mille
+    // francs. Une lecture en unités mineures aurait donné une commission de
+    // 0,4.
+    expect(corps.amount).toBe(2000);
+    expect(corps.currency).toBe("XOF");
 
     expect(invitation.etat).toBe("EN_ATTENTE");
-    expect(invitation.url).toBeNull();
-    expect(invitation.instruction).toContain("2250700000000");
-    expect(invitation.identifiantFournisseur).toBe("chg_1");
+    expect(invitation.url).toContain("ravesandboxapi");
+    expect(invitation.identifiantFournisseur).toBe("10472878");
+  });
+
+  it("réclame le réseau au Ghana, et nulle part ailleurs", async () => {
+    // Le seul marché où la v3 l'exige, et il ne se déduit pas du préfixe : la
+    // portabilité y est effective, donc un 024 n'est plus forcément MTN.
+    const f = fauxHttp([{ corps: { status: "success", data: {}, meta: {} } }]);
+
+    await flutterwave({
+      cleSecrete: "FLWSECK_TEST-essai",
+      secretWebhook: "h",
+      reseauGhana: "VODAFONE",
+      http: f.http,
+    }).inviter({
+      ...DEMANDE,
+      devise: "GHS",
+      abonne: { ...DEMANDE.abonne, telephone: "+233200000000" },
+    });
+
+    expect(f.vues[0]!.url).toContain("type=mobile_money_ghana");
+    expect(JSON.parse(f.vues[0]!.corps!).network).toBe("VODAFONE");
+  });
+
+  it("traite un 200 qui dit `status: error` comme un refus", async () => {
+    // La v3 répond 200 sur des refus. Ne regarder que le code HTTP ferait
+    // prendre un refus pour une charge ouverte — et l'abonné attendrait une
+    // invite qui ne viendra jamais.
+    const f = fauxHttp([
+      { corps: { status: "error", message: "Invalid phone number" } },
+    ]);
+
+    await expect(
+      flutterwave({
+        cleSecrete: "FLWSECK_TEST-essai",
+        secretWebhook: "h",
+        http: f.http,
+      }).inviter(DEMANDE),
+    ).rejects.toThrow(/Invalid phone number/);
+  });
+
+  it("refuse de démarrer sur une clé de production non assumée", async () => {
+    // La v3 n'a qu'une seule adresse : c'est le préfixe de la clé qui décide
+    // si l'on éprouve ou si l'on débite. Une clé recopiée du mauvais onglet
+    // prélèverait de l'argent réel sans qu'aucune configuration ne change
+    // d'apparence.
+    expect(() =>
+      flutterwave({ cleSecrete: "FLWSECK-vraie", secretWebhook: "h" }),
+    ).toThrow(/n'est pas une clé de test/);
+
+    // Assumée, elle passe.
+    expect(() =>
+      flutterwave({
+        cleSecrete: "FLWSECK-vraie",
+        secretWebhook: "h",
+        production: true,
+      }),
+    ).not.toThrow();
   });
 
   it("refuse tôt quand la devise ne peut pas correspondre au moyen de paiement", async () => {
@@ -122,8 +175,7 @@ describe("Flutterwave", () => {
     const f = fauxHttp([]);
 
     await expect(
-      flutterwave({ clientId: "sk",
-      clientSecret: "sk", secretWebhook: "h", http: f.http }).inviter({
+      flutterwave({ cleSecrete: "FLWSECK_TEST-essai", secretWebhook: "h", http: f.http }).inviter({
         ...DEMANDE,
         devise: "GHS",
       }),
@@ -136,8 +188,7 @@ describe("Flutterwave", () => {
   it("refuse un abonné sans numéro, en le disant", async () => {
     const f = fauxHttp([]);
     await expect(
-      flutterwave({ clientId: "sk",
-      clientSecret: "sk", secretWebhook: "h", http: f.http }).inviter({
+      flutterwave({ cleSecrete: "FLWSECK_TEST-essai", secretWebhook: "h", http: f.http }).inviter({
         ...DEMANDE,
         abonne: { ...DEMANDE.abonne, telephone: null },
       }),
@@ -159,8 +210,7 @@ describe("Flutterwave", () => {
     const signature = createHmac("sha256", secret).update(corps, "utf8").digest("hex");
 
     const issue = flutterwave({
-      clientId: "sk",
-      clientSecret: "sk",
+      cleSecrete: "FLWSECK_TEST-essai",
       secretWebhook: secret,
       http: fauxHttp([]).http,
     }).lireWebhook(corps, { "flutterwave-signature": signature });
@@ -176,8 +226,7 @@ describe("Flutterwave", () => {
     // ressemble à un webhook perdu, et personne n'irait voir.
     expect(() =>
       flutterwave({
-        clientId: "sk",
-      clientSecret: "sk",
+        cleSecrete: "FLWSECK_TEST-essai",
         secretWebhook: "h",
         http: fauxHttp([]).http,
       }).lireWebhook("{}", { "flutterwave-signature": "0".repeat(64) }),
@@ -191,8 +240,7 @@ describe("Flutterwave", () => {
 
     expect(
       flutterwave({
-        clientId: "sk",
-      clientSecret: "sk",
+        cleSecrete: "FLWSECK_TEST-essai",
         secretWebhook: secret,
         http: fauxHttp([]).http,
       }).lireWebhook(corps, { "flutterwave-signature": signature }),
@@ -208,8 +256,7 @@ describe("Flutterwave", () => {
     ]);
 
     const issue = await flutterwave({
-      clientId: "sk",
-      clientSecret: "sk",
+      cleSecrete: "FLWSECK_TEST-essai",
       secretWebhook: "h",
       http: f.http,
     }).constater("2026-02-09");

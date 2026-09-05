@@ -46,8 +46,7 @@ import { referenceDeVersement } from "../dist/encaissement/reconciliation.js";
 import { exposant, versFournisseur } from "../dist/devise.js";
 
 const CLE_PAYSTACK = process.env["PAYSTACK_CLE_SECRETE"] ?? "";
-const FW_CLIENT_ID = process.env["FLUTTERWAVE_CLIENT_ID"] ?? "";
-const FW_CLIENT_SECRET = process.env["FLUTTERWAVE_CLIENT_SECRET"] ?? "";
+const CLE_FLUTTERWAVE = process.env["FLUTTERWAVE_CLE_SECRETE"] ?? "";
 
 /**
  * Ce que Flutterwave compte, et pourquoi le franc CFA ne peut pas le dire.
@@ -296,17 +295,14 @@ async function paystack() {
 async function flutterwave() {
   console.log("\n▸ Flutterwave");
 
-  if (FW_CLIENT_ID === "" || FW_CLIENT_SECRET === "") {
+  if (CLE_FLUTTERWAVE === "") {
     sautes += 1;
-    console.log("  — sauté : FLUTTERWAVE_CLIENT_ID / FLUTTERWAVE_CLIENT_SECRET absents.");
-    console.log("    Ce ne sont ni une clé FLWSECK_, ni l'identifiant marchand :");
-    console.log("    la v4 échange un couple client contre un jeton de dix minutes.");
+    console.log("  — sauté : FLUTTERWAVE_CLE_SECRETE absente (FLWSECK_TEST-…).");
     return;
   }
 
   const f = fournisseur("flutterwave", {
-    clientId: FW_CLIENT_ID,
-    clientSecret: FW_CLIENT_SECRET,
+    cleSecrete: CLE_FLUTTERWAVE,
     secretWebhook: process.env["FLUTTERWAVE_SECRET_WEBHOOK"] ?? "essai",
     // Jamais la production depuis ce script.
     production: false,
@@ -384,6 +380,6 @@ if (echecs > 0) process.exitCode = 1;
 if (passes === 0 && echecs === 0) {
   console.log(
     "\nRien n'a été éprouvé. Posez PAYSTACK_CLE_SECRETE (sk_test_…) ou " +
-      "FLUTTERWAVE_CLIENT_ID + _SECRET dans votre environnement.",
+      "FLUTTERWAVE_CLE_SECRETE dans votre environnement.",
   );
 }

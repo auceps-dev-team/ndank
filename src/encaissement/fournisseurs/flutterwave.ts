@@ -75,60 +75,126 @@ import { verifierFlutterwave } from "../signature";
 const DECIMALES_FLUTTERWAVE = 0;
 
 /**
- * Les adresses, vérifiées contre la documentation le 5 septembre 2026.
+ * L'adresse, éprouvée avec de vraies clés le 5 septembre 2026.
  *
  * ════════════════════════════════════════════════════════════════════════════
- * ELLES ÉTAIENT FAUSSES JUSQU'À LA 0.14.0
+ * LA V3, PARCE QUE C'EST CELLE QUI RÉPOND
  *
- * On visait `api.flutterwave.cloud/developersandbox`, qui n'existe pas. La
- * documentation donne deux hôtes distincts, et non un hôte avec un chemin — la
- * différence est invisible à la lecture et absolue à l'exécution.
+ * La 0.14.0 visait la v4 — deux hôtes, un échange OAuth préalable, un flux en
+ * trois appels. C'était fidèle à la documentation la plus récente, et
+ * inutilisable : le tableau de bord Flutterwave délivre des clés `FLWSECK_…`,
+ * et l'IDP de la v4 les refuse. Mesuré, pas supposé :
  *
- * Personne ne l'avait vu parce que rien n'avait jamais appelé : les tests
- * tournent contre un faux `Http`, et un faux répond à n'importe quelle adresse.
+ *     v4  idp.flutterwave.com   → 401  invalid_client
+ *     v3  api.flutterwave.com   → 200
+ *
+ * On ne choisit donc pas l'API la plus moderne, on choisit celle que le compte
+ * d'un marchand peut réellement employer. Le jour où Flutterwave délivrera des
+ * identifiants v4 depuis le même tableau de bord, le travail de la 0.14.0 est
+ * dans l'historique — il n'est pas perdu, il est prématuré.
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ * C'EST LA CLÉ QUI CHOISIT L'ENVIRONNEMENT, PAS L'ADRESSE
+ *
+ * Un seul hôte pour le bac à sable et la production : `FLWSECK_TEST-…` teste,
+ * `FLWSECK-…` débite pour de bon. Rien dans l'URL ne le laisse voir.
+ *
+ * C'est un piège de configuration sérieux — une clé recopiée du mauvais onglet
+ * prélève de l'argent réel sans qu'aucune adresse ne change. D'où le refus plus
+ * bas : sans `production: true`, l'adaptateur n'accepte pas une clé de
+ * production.
  */
-const BASE = "https://developersandbox-api.flutterwave.com";
-const BASE_PROD = "https://f4bexperience.flutterwave.com";
+const BASE = "https://api.flutterwave.com/v3";
 
-/** Là où l'on échange ses identifiants contre un jeton. Commun aux deux. */
-const IDP =
-  "https://idp.flutterwave.com/realms/flutterwave/protocol/openid-connect/token";
+/**
+ * Le canal de charge, selon le pays.
+ *
+ * Flutterwave ne l'infère pas : c'est un paramètre d'URL, et se tromper donne
+ * une erreur qui parle de champs manquants plutôt que de pays.
+ */
+const CANAUX: Record<string, string> = {
+  "225": "mobile_money_franco", // Côte d'Ivoire
+  "221": "mobile_money_franco", // Sénégal
+  "226": "mobile_money_franco", // Burkina Faso
+  "223": "mobile_money_franco", // Mali
+  "229": "mobile_money_franco", // Bénin
+  "228": "mobile_money_franco", // Togo
+  "237": "mobile_money_franco", // Cameroun
+  "233": "mobile_money_ghana", // Ghana — exige en plus un réseau
+  "256": "mobile_money_uganda", // Ouganda
+  "250": "mobile_money_rwanda", // Rwanda
+};
+
+/** Le code pays ISO, que la v3 réclame à côté du numéro. */
+const PAYS: Record<string, string> = {
+  "225": "CI",
+  "221": "SN",
+  "226": "BF",
+  "223": "ML",
+  "229": "BJ",
+  "228": "TG",
+  "237": "CM",
+  "233": "GH",
+  "256": "UG",
+  "250": "RW",
+};
 
 export interface ConfigFlutterwave {
   /**
-   * L'identifiant client, du tableau de bord Flutterwave.
+   * La clé secrète du tableau de bord — `FLWSECK_TEST-…` ou `FLWSECK-…`.
    *
    * ═══════════════════════════════════════════════════════════════════════
-   * CE N'EST PLUS UNE CLÉ SECRÈTE, ET C'EST UN CHANGEMENT DE FOND
+   * CE N'EST NI LA CLÉ PUBLIQUE, NI LA CLÉ DE CHIFFREMENT
    *
-   * La v3 portait un `FLWSECK_TEST-…` qu'on présentait tel quel en `Bearer`.
-   * La v4 ne l'accepte plus : on échange un couple identifiant/secret contre
-   * un jeton d'accès valable **dix minutes**, et c'est ce jeton qui voyage.
+   * Le tableau de bord en donne trois, et une seule sert ici :
    *
-   * L'adaptateur envoyait le secret en direct jusqu'à la 0.14.0. Il ne s'est
-   * jamais authentifié une seule fois — et rien ne l'a signalé, parce que les
-   * tests répondent depuis un faux qui ne vérifie aucun en-tête.
+   *   — `FLWPUBK_…` est publique et n'authentifie aucun appel serveur ;
+   *   — la clé de chiffrement sert au 3-D Secure des cartes, que Ndank ne
+   *     touche pas ;
+   *   — `FLWSECK_…` est celle-ci.
    *
-   * L'identifiant marchand du tableau de bord (`100837168`, ou le
-   * `200772265` du mode test) n'est **pas** cela non plus : il désigne le
-   * compte, il n'authentifie rien.
+   * L'identifiant marchand du tableau de bord n'en est pas une non plus : il
+   * désigne le compte, il ne l'ouvre pas.
    */
-  clientId: string;
-  /** Le secret client, qui l'accompagne. Jamais envoyé ailleurs qu'à l'IDP. */
-  clientSecret: string;
+  cleSecrete: string;
+
   /** Le « secret hash » déclaré côté webhooks. Sans lui, on ne peut rien vérifier. */
   secretWebhook: string;
-  /** `false` par défaut : on ne part pas en production par accident. */
+
+  /**
+   * Le réseau ghanéen, quand l'hôte vend au Ghana.
+   *
+   * Le Ghana est le seul marché où la v3 réclame le réseau en plus du numéro,
+   * et il ne se déduit pas du préfixe : la portabilité y est effective depuis
+   * des années, donc un 024 n'est plus forcément MTN.
+   *
+   * `MTN` par défaut, qui couvre la majorité — mais un hôte ghanéen doit poser
+   * la vraie valeur, sinon il facturera les abonnés Vodafone sur le mauvais
+   * réseau et la charge échouera.
+   */
+  reseauGhana?: "MTN" | "VODAFONE" | "AIRTELTIGO";
+
+  /**
+   * Autorise une clé de production. `false` par défaut.
+   *
+   * ═══════════════════════════════════════════════════════════════════════
+   * IL NE CHANGE PAS L'ADRESSE — IL AUTORISE UNE CLÉ
+   *
+   * La v3 n'a qu'un seul hôte : c'est le préfixe de la clé qui décide si l'on
+   * teste ou si l'on débite. Une clé recopiée du mauvais onglet prélève donc de
+   * l'argent réel sans qu'aucune configuration ne change d'apparence.
+   *
+   * L'adaptateur refuse de se construire sur une clé sans `_TEST` tant que ce
+   * drapeau n'est pas posé. C'est le seul endroit du dépôt où l'on préfère
+   * refuser de démarrer plutôt que de laisser passer.
+   */
   production?: boolean;
+
   http?: Http;
 }
 
 /** Les champs que l'hôte doit remplir. Sert à la validation du registre. */
-export const CHAMPS_FLUTTERWAVE = [
-  "clientId",
-  "clientSecret",
-  "secretWebhook",
-] as const;
+export const CHAMPS_FLUTTERWAVE = ["cleSecrete", "secretWebhook"] as const;
 
 /**
  * Indicatif → réseau et devise attendue.
@@ -199,84 +265,31 @@ export function decouperNumero(
 
 export function flutterwave(config: ConfigFlutterwave): Encaissement {
   const http = config.http ?? httpParDefaut;
-  const base = config.production ? BASE_PROD : BASE;
 
-  /**
-   * Le jeton d'accès, gardé entre deux appels.
-   *
-   * ════════════════════════════════════════════════════════════════════════════
-   * IL EST EN MÉMOIRE, ET C'EST SUFFISANT ICI
-   *
-   * Une souscription fait trois appels — client, moyen de paiement, charge — et
-   * en redemander un à chaque fois multiplierait par deux le nombre d'allers-
-   * retours pour rien.
-   *
-   * En mémoire de processus : deux instances en demandent chacune un, ce qui
-   * est sans conséquence. Flutterwave ne les invalide pas l'un l'autre, et l'on
-   * évite ainsi d'exiger un magasin partagé pour une valeur qui vit dix
-   * minutes.
-   *
-   * On renouvelle trente secondes **avant** l'échéance. Sans cette marge, un
-   * jeton obtenu à la première étape peut expirer entre le moyen de paiement et
-   * la charge — et l'on échouerait au moment précis où l'on parle d'argent.
-   */
-  let jeton: { valeur: string; expireA: number } | null = null;
-
-  async function jetonDAcces(): Promise<string> {
-    if (jeton !== null && Date.now() < jeton.expireA) return jeton.valeur;
-
-    const reponse = await http({
-      methode: "POST",
-      url: IDP,
-      entetes: { "Content-Type": "application/x-www-form-urlencoded" },
-      corps: new URLSearchParams({
-        client_id: config.clientId,
-        client_secret: config.clientSecret,
-        grant_type: "client_credentials",
-      }).toString(),
-    });
-
-    if (reponse.statut < 200 || reponse.statut >= 300) {
-      throw new ErreurFournisseur(
-        "flutterwave",
-        reponse.statut,
-        reponse.corps,
-        "Flutterwave a refusé les identifiants. Ce sont `clientId` et " +
-          "`clientSecret` du tableau de bord — ni une clé `FLWSECK_…`, ni " +
-          "l'identifiant marchand.",
-      );
-    }
-
-    const charge = JSON.parse(reponse.corps) as Record<string, unknown>;
-    const valeur = charge["access_token"];
-    if (typeof valeur !== "string" || valeur === "") {
-      throw new ErreurFournisseur(
-        "flutterwave",
-        reponse.statut,
-        reponse.corps,
-        "aucun `access_token` dans la réponse de l'IDP",
-      );
-    }
-
-    const secondes = Number(charge["expires_in"] ?? 600);
-    jeton = { valeur, expireA: Date.now() + Math.max(0, secondes - 30) * 1000 };
-
-    return valeur;
+  // Le seul refus de démarrage du dépôt. Voir `production` : rien dans l'URL
+  // ne distingue un essai d'un débit réel, alors on regarde la clé.
+  if (!config.cleSecrete.includes("_TEST") && config.production !== true) {
+    throw new ErreurFournisseur(
+      "flutterwave",
+      0,
+      "",
+      "Cette clé Flutterwave n'est pas une clé de test, et `production` n'est " +
+        "pas activé. La v3 n'a qu'une seule adresse : c'est le préfixe de la " +
+        "clé qui décide si l'on éprouve ou si l'on débite.",
+    );
   }
 
   async function appeler(
     chemin: string,
     methode: "GET" | "POST",
     corps?: unknown,
-    entetesEnPlus: Record<string, string> = {},
   ): Promise<Record<string, unknown>> {
     const reponse = await http({
       methode,
-      url: `${base}${chemin}`,
+      url: `${BASE}${chemin}`,
       entetes: {
-        Authorization: `Bearer ${await jetonDAcces()}`,
+        Authorization: `Bearer ${config.cleSecrete}`,
         "Content-Type": "application/json",
-        ...entetesEnPlus,
       },
       corps: corps === undefined ? undefined : JSON.stringify(corps),
     });
@@ -285,8 +298,9 @@ export function flutterwave(config: ConfigFlutterwave): Encaissement {
       throw new ErreurFournisseur("flutterwave", reponse.statut, reponse.corps);
     }
 
+    let enveloppe: Record<string, unknown>;
     try {
-      return JSON.parse(reponse.corps) as Record<string, unknown>;
+      enveloppe = JSON.parse(reponse.corps) as Record<string, unknown>;
     } catch {
       throw new ErreurFournisseur(
         "flutterwave",
@@ -295,6 +309,24 @@ export function flutterwave(config: ConfigFlutterwave): Encaissement {
         "flutterwave a répondu autre chose que du JSON",
       );
     }
+
+    /**
+     * La v3 répond 200 sur des refus, et le dit dans le corps.
+     *
+     * `{"status":"error","message":"..."}` arrive avec un code 200. Ne
+     * regarder que le statut HTTP ferait donc prendre un refus pour une charge
+     * ouverte — et l'abonné attendrait une invite qui ne viendra jamais.
+     */
+    if (enveloppe["status"] === "error") {
+      throw new ErreurFournisseur(
+        "flutterwave",
+        reponse.statut,
+        reponse.corps,
+        String(enveloppe["message"] ?? "refus sans message"),
+      );
+    }
+
+    return enveloppe;
   }
 
   function donnees(enveloppe: Record<string, unknown>): Record<string, unknown> {
@@ -338,96 +370,103 @@ export function flutterwave(config: ConfigFlutterwave): Encaissement {
         );
       }
 
+      const canal = CANAUX[decoupe.indicatif];
+      if (!canal) {
+        throw new ErreurFournisseur(
+          "flutterwave",
+          0,
+          "",
+          `Flutterwave ne couvre pas le mobile money pour l'indicatif +${decoupe.indicatif}.`,
+        );
+      }
+
       /**
-       * Les en-têtes que la v4 exige sur chaque écriture.
+       * Un seul appel, et `tx_ref` porte notre idempotence.
        *
        * ═══════════════════════════════════════════════════════════════════
-       * LA CLÉ D'IDEMPOTENCE DÉRIVE DE LA RÉFÉRENCE, ET NON DU HASARD
+       * LA V3 EST PLUS SIMPLE QUE LA V4, ET C'EST TANT MIEUX ICI
        *
-       * C'est tout l'enjeu. Une clé tirée au sort à chaque appel satisferait
-       * la validation de Flutterwave et ne protégerait de rien : deux passages
-       * simultanés créeraient deux charges, chacune avec sa clé unique.
+       * Là où la v4 demandait un client, puis un moyen de paiement, puis une
+       * charge — trois allers-retours par abonné à relancer — la v3 fait tout
+       * d'un coup. Sur un passage quotidien de cinq cents abonnés, la
+       * différence est de mille appels réseau.
        *
-       * La référence, elle, porte déjà le cycle et l'abonnement — c'est notre
-       * garantie d'idempotence à nous. En la réutilisant ici, un rejeu retombe
-       * sur la même clé, et Flutterwave rend la charge existante au lieu d'en
-       * ouvrir une seconde.
-       *
-       * Le suffixe distingue les trois étapes : sans lui, la création du moyen
-       * de paiement se verrait rendre le client de l'étape précédente.
+       * `tx_ref` est notre clé de cycle. Un passage rejoué produit la même, et
+       * Flutterwave refuse alors un doublon plutôt que d'ouvrir une seconde
+       * charge — c'est ce qui rend le rejeu sûr sans qu'on ait à s'en occuper.
        */
-      const cles = (etape: string): Record<string, string> => ({
-        "X-Idempotency-Key": `${demande.reference}-${etape}`,
-        // Le traçage, lui, doit changer à chaque appel : c'est ce qui permet au
-        // support de retrouver UNE tentative et non toutes.
-        "X-Trace-Id": `${demande.reference}-${etape}-${Date.now().toString(36)}`,
-      });
+      const corps: Record<string, unknown> = {
+        tx_ref: demande.reference,
+        amount: versFournisseur(
+          demande.montant,
+          demande.devise,
+          DECIMALES_FLUTTERWAVE,
+        ),
+        currency: demande.devise,
+        country: PAYS[decoupe.indicatif],
+        // La v3 veut le numéro national, sans indicatif.
+        phone_number: decoupe.numero,
+        email: demande.abonne.courriel ?? `${decoupe.numero}@sans-adresse.ndank`,
+        fullname: demande.abonne.nom ?? "Abonné",
+        redirect_url: demande.retour,
+      };
 
-      // 1 — le client.
-      const client = donnees(
-        await appeler("/customers", "POST", {
-          email: demande.abonne.courriel ?? undefined,
-          name: { first: demande.abonne.nom ?? "Abonné" },
-          phone: { country_code: decoupe.indicatif, number: decoupe.numero },
-        }, cles("client")),
+      // Le Ghana est le seul à réclamer le réseau, et il ne se déduit pas du
+      // préfixe : la portabilité y est effective, donc un 024 n'est plus
+      // forcément MTN.
+      if (canal === "mobile_money_ghana") {
+        corps["network"] = config.reseauGhana ?? "MTN";
+      }
+
+      const enveloppe = await appeler(
+        `/charges?type=${canal}`,
+        "POST",
+        corps,
       );
 
-      // 2 — le moyen de paiement. Le réseau est laissé au fournisseur : il le
-      //     déduit du préfixe mieux que nous, et ce mapping vieillirait mal.
-      const moyen = donnees(
-        await appeler("/payment-methods", "POST", {
-          type: "mobile_money",
-          mobile_money: {
-            country_code: decoupe.indicatif,
-            phone_number: decoupe.numero,
-          },
-        }, cles("moyen")),
-      );
+      const charge = donnees(enveloppe);
+      const autorisation = (enveloppe["meta"] as Record<string, unknown>)?.[
+        "authorization"
+      ] as Record<string, unknown> | undefined;
 
-      // 3 — la charge. `reference` est notre clé de cycle : rejouer le passage
-      //     ne crée pas une seconde charge.
-      const charge = donnees(
-        await appeler("/charges", "POST", {
-          currency: demande.devise,
-          customer_id: client["id"],
-          payment_method_id: moyen["id"],
-          amount: versFournisseur(
-            demande.montant,
-            demande.devise,
-            DECIMALES_FLUTTERWAVE,
-          ),
-          reference: demande.reference,
-          redirect_url: demande.retour,
-          meta: { libelle: demande.libelle },
-        }, cles("charge")),
-      );
-
-      const suite = charge["next_action"] as Record<string, unknown> | undefined;
-      const redirection = suite?.["redirect_url"] as Record<string, unknown> | undefined;
-      const consigne = suite?.["payment_instruction"] as Record<string, unknown> | undefined;
+      // `redirect` au Ghana, `redirect_url` en zone franco. Les deux formes
+      // coexistent selon le canal, constaté en bac à sable.
+      const url =
+        (autorisation?.["redirect_url"] as string) ??
+        (autorisation?.["redirect"] as string) ??
+        null;
 
       return {
         reference: demande.reference,
-        identifiantFournisseur: (charge["id"] as string) ?? null,
-        url: (redirection?.["url"] as string) ?? null,
-        instruction: (consigne?.["note"] as string) ?? null,
-        etat: etatDepuis(charge["status"] as string),
+        identifiantFournisseur:
+          charge["id"] === undefined ? null : String(charge["id"]),
+        url,
+        instruction: (autorisation?.["note"] as string) ?? null,
+        // Une charge qui vient d'être ouverte est en attente, même quand la v3
+        // ne renvoie pas de statut — ce que fait le canal ghanéen.
+        etat: charge["status"] === undefined
+          ? "EN_ATTENTE"
+          : etatDepuis(charge["status"] as string),
         expireLe: null,
       };
     },
 
+    /**
+     * Le constat, par notre référence et non par leur identifiant.
+     *
+     * `verify_by_reference` prend le `tx_ref` qu'on a posé, là où
+     * `/transactions/<id>/verify` demanderait de stocker l'identifiant
+     * Flutterwave. Une charge ouverte puis perdue — le processus meurt entre
+     * l'appel et l'écriture — resterait alors introuvable, alors qu'elle est
+     * parfaitement retrouvable par la clé de cycle.
+     */
     async constater(reference: string): Promise<Issue> {
       const enveloppe = await appeler(
-        `/charges?reference=${encodeURIComponent(reference)}`,
+        `/transactions/verify_by_reference?tx_ref=${encodeURIComponent(reference)}`,
         "GET",
       );
 
-      const brut = enveloppe["data"];
-      const charge = Array.isArray(brut)
-        ? ((brut[0] ?? {}) as Record<string, unknown>)
-        : donnees(enveloppe);
-
-      return lireCharge(reference, charge, enveloppe);
+      return lireCharge(reference, donnees(enveloppe), enveloppe);
     },
 
     lireWebhook(corps: string, entetes: Entetes): Issue | null {

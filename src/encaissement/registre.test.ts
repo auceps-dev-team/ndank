@@ -53,7 +53,7 @@ describe("la configuration d'un fournisseur", () => {
     expect(
       fournisseur(
         "flutterwave",
-        { clientId: "id", clientSecret: "sk", secretWebhook: "h" },
+        { cleSecrete: "FLWSECK_TEST-sk", secretWebhook: "h" },
         RIEN,
       ).nom,
     ).toBe("flutterwave");
