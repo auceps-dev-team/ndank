@@ -82,6 +82,7 @@ const INTERNES = new Set([
   "envoi/transporteurs/brevo.ts",
   "envoi/transporteurs/expo.ts",
   "envoi/transporteurs/fondations.ts",
+  "envoi/transporteurs/passerelle-android.ts",
   "envoi/transporteurs/resend.ts",
   "envoi/transporteurs/twilio.ts",
   "page/rendu.ts",

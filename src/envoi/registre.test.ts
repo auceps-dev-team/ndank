@@ -161,7 +161,13 @@ describe("le catalogue", () => {
       .filter((l) => l.branche)
       .map((l) => l.nom);
 
-    expect(branchees.sort()).toEqual(["brevo", "expo", "resend", "twilio"]);
+    expect(branchees.sort()).toEqual([
+      "brevo",
+      "expo",
+      "passerelle-android",
+      "resend",
+      "twilio",
+    ]);
   });
 
   it("dit où obtenir les identifiants d'une fondation", () => {

@@ -6,6 +6,54 @@ le reste.
 
 ---
 
+## 0.16.0
+
+### Ajouté
+
+**`passerelle-android`** — un téléphone Android comme passerelle SMS, pour
+[android-sms-gateway](https://github.com/capcom6/android-sms-gateway)
+(Apache 2.0).
+
+Le SMS est le seul barreau payant de l'échelle, et c'est celui qui arrive. Chez
+une passerelle internationale il se paie autour de cinq centimes vers la Côte
+d'Ivoire ; depuis une SIM locale avec forfait, une fraction de cela. Sur cinq
+cents abonnés relancés trois fois par mois, c'est la différence entre une
+échelle qu'on déroule et une échelle qu'on rogne.
+
+**Mais l'argument technique pèse plus que le prix.** Cette passerelle rend
+`Delivered` — l'appareil du destinataire a confirmé la réception. C'est le seul
+canal de Ndank où « reçu » a une réponse : chez Resend comme chez Twilio,
+« parti » veut dire « accepté » et rien de plus, ce que la 0.15.1 a mesuré.
+
+`etatDuMessage` permet de relire cet état après coup. Il vit hors du port
+`Envoi`, qui doit répondre séance tenante : le moteur ne peut pas attendre un
+accusé qui met des minutes.
+
+### Ce qu'il faut savoir avant de s'en servir
+
+Trois choses qu'aucun code ne rattrape, écrites dans l'adaptateur :
+
+**L'opérateur peut suspendre la SIM.** Une carte grand public qui émet des
+centaines de messages identiques ressemble, vue du réseau, à ce que les
+opérateurs de la zone combattent activement. Le risque croît avec le volume.
+C'est une décision de l'hôte, pas une que Ndank puisse prendre pour lui.
+
+**Le téléphone est un point de panne unique.** Batterie, réseau, redémarrage :
+l'échelle s'arrête sans bruit. `bilan()` le voit — tous les envois d'un canal
+qui échouent donnent une `ALERTE` — mais seulement au passage suivant.
+
+**Le débit est celui d'un téléphone.** Cinq cents abonnés passent ; cinquante
+mille non.
+
+### Non éprouvé
+
+**Elle n'a jamais appelé un téléphone.** Écrite d'après la documentation, comme
+Flutterwave l'était avant la 0.15.0 — où l'on a découvert que l'adaptateur ne
+s'était jamais authentifié une seule fois. Une case de plus dans « ce qui n'est
+pas encore éprouvé », et il faut la lire comme telle.
+
+---
+
 ## 0.15.1
 
 ### Documenté

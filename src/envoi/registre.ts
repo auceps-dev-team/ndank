@@ -15,6 +15,10 @@ import {
 } from "./transporteurs/fondations";
 import { CHAMPS_RESEND, resend } from "./transporteurs/resend";
 import { CHAMPS_TWILIO, twilio } from "./transporteurs/twilio";
+import {
+  CHAMPS_PASSERELLE_ANDROID,
+  passerelleAndroid,
+} from "./transporteurs/passerelle-android";
 
 /**
  * Le registre des passerelles.
@@ -49,7 +53,12 @@ import { CHAMPS_TWILIO, twilio } from "./transporteurs/twilio";
  */
 
 export type NomCourriel = "resend" | "brevo";
-export type NomSms = "twilio" | "orange-sms" | "africastalking";
+export type NomSms =
+  | "twilio"
+  /** Un téléphone Android, via android-sms-gateway. Voir l'adaptateur. */
+  | "passerelle-android"
+  | "orange-sms"
+  | "africastalking";
 export type NomPush = "expo" | "fcm" | "webpush";
 export type NomPasserelle = NomCourriel | NomSms | NomPush;
 
@@ -65,6 +74,7 @@ export const CHAMPS_PASSERELLE: Readonly<
   resend: CHAMPS_RESEND,
   brevo: CHAMPS_BREVO,
   twilio: CHAMPS_TWILIO,
+  "passerelle-android": CHAMPS_PASSERELLE_ANDROID,
   expo: CHAMPS_EXPO,
   "orange-sms": PAR_NOM_ENVOI["orange-sms"]!.champs,
   africastalking: PAR_NOM_ENVOI["africastalking"]!.champs,
@@ -77,6 +87,7 @@ export const CANAL_PASSERELLE: Readonly<Record<NomPasserelle, Canal>> = {
   resend: "courriel",
   brevo: "courriel",
   twilio: "sms",
+  "passerelle-android": "sms",
   "orange-sms": "sms",
   africastalking: "sms",
   expo: "push",
@@ -85,7 +96,13 @@ export const CANAL_PASSERELLE: Readonly<Record<NomPasserelle, Canal>> = {
 };
 
 /** Celles qui sont réellement branchées. Les autres sont des fondations. */
-const BRANCHEES = new Set<NomPasserelle>(["resend", "brevo", "twilio", "expo"]);
+const BRANCHEES = new Set<NomPasserelle>([
+  "resend",
+  "brevo",
+  "twilio",
+  "passerelle-android",
+  "expo",
+]);
 
 export class ConfigurationEnvoiIncomplete extends Error {
   constructor(
@@ -197,6 +214,18 @@ export function transporteurSms(
       serviceMessagerie: optionnel(identifiants, "serviceMessagerie"),
       indicatifParDefaut: optionnel(identifiants, "indicatifParDefaut"),
       retirerZeroDeTete: identifiants["retirerZeroDeTete"] === true,
+      http,
+    });
+  }
+
+  if (nom === "passerelle-android") {
+    return passerelleAndroid({
+      base: texte(identifiants, "base"),
+      utilisateur: texte(identifiants, "utilisateur"),
+      motDePasse: texte(identifiants, "motDePasse"),
+      appareil: optionnel(identifiants, "appareil"),
+      sim: identifiants["sim"] as 1 | 2 | 3 | undefined,
+      expireApres: identifiants["expireApres"] as number | undefined,
       http,
     });
   }

@@ -1205,7 +1205,7 @@ schéma à un vrai PostgreSQL (Prisma 6.19.3, branche `Ndank-Baobart-Test`).
       est identique avant et après. Le retour arrière est bien celui de
       PostgreSQL.
 
-Restent trois paris, dont un à moitié levé.
+Restent quatre paris, dont deux à moitié levés.
 
 - [ ] **Les quatre passerelles d'envoi.** Resend, Brevo, Twilio et Expo
       étaient écrites d'après leur documentation, sans qu'aucune n'ait jamais
@@ -1226,6 +1226,16 @@ Restent trois paris, dont un à moitié levé.
       branche les webhooks de Resend.
 
       **Brevo, Twilio et Expo restent ouverts.**
+
+- [ ] **La passerelle Android.** `passerelle-android` est écrite d'après la
+      documentation d'[android-sms-gateway](https://github.com/capcom6/android-sms-gateway),
+      **et n'a jamais appelé un téléphone**. C'est exactement la position où se
+      trouvait Flutterwave avant la 0.15.0 — où l'on a découvert que
+      l'adaptateur ne s'était jamais authentifié une seule fois.
+
+      Pour la lever : installer l'application sur un téléphone Android, poser
+      une SIM, et envoyer une relance à un numéro qu'on tient. Puis relire
+      `etatDuMessage` et vérifier qu'il passe bien à `Delivered`.
 
 - [ ] **Flutterwave et MTN.** Seul Paystack avait tourné en bac à sable — et
       c'est lui qui a révélé les deux erreurs les plus coûteuses du dépôt.
