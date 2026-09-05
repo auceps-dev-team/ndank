@@ -5,3 +5,10 @@ dist/
 .env.local
 ndank-*.tgz
 apercu-pages/
+
+# Notes de travail produites par des outils d'analyse, gardées en local.
+# Elles décrivent le dépôt à un instant donné : versionnées, elles
+# vieilliraient sans que personne ne les corrige, et diraient bientôt le
+# contraire du README.
+audit_complet_ndank.md
+memory-bank/
