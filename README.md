@@ -1170,6 +1170,66 @@ chiffres qu'on envoie par SMS ; il n'y a ni session, ni cookie, ni compte, ni
 de tout cela, et lui en donner ferait porter au SDK une responsabilité qui
 appartient à Ndank App.
 
+## Envoyer moins vite, pour continuer à envoyer
+
+Deux hôtes ont le même besoin pour deux raisons opposées. Celui qui passe par
+une **SIM** protège sa carte : cinq cents messages identiques en trois minutes
+ressemblent, vue du réseau, à ce que les opérateurs de la zone combattent
+activement. Celui qui passe par **Twilio** protège sa facture : une boucle qui
+part de travers se compte en euros avant que quiconque ne s'en aperçoive.
+
+D'où un décorateur, et non une option de l'adaptateur Android.
+
+```ts
+import { limiter } from "ndank/envoi/limite";
+import { transporteurSms } from "ndank/envoi/registre";
+
+const sms = limiter(transporteurSms("passerelle-android", process.env), {
+  parMinute: 10,
+  parJour: 300,
+  surRefus: ({ envoyesAujourdhui, plafond }) => alerter(envoyesAujourdhui, plafond),
+});
+```
+
+Il se substitue au transporteur partout : même nom, même canal, même
+`disponible`. Rien en aval ne sait qu'il est limité.
+
+### Espacer plutôt que refuser, et refuser quand même au bout
+
+**L'espacement est la vraie protection.** Cinq cents relances à six secondes
+d'intervalle prennent cinquante minutes — sans importance pour une tâche
+nocturne, et déterminant pour la carte SIM.
+
+**Le plafond est un garde-fou, pas un régulateur.** Il est censé ne jamais se
+déclencher. N'avoir que lui serait pire : les premiers messages partiraient en
+rafale, la SIM serait signalée dès le premier soir, et le plafond n'aurait rien
+empêché.
+
+L'attente varie de ±30 % par défaut, parce qu'**un message exactement toutes
+les six secondes ne ressemble à rien d'humain**. Le hasard coûte zéro et retire
+ce motif.
+
+### Un refus n'est pas une perte
+
+Au plafond, le transporteur rend `parti: false`. Le moteur essaie le barreau
+suivant et **ne note pas la relance** : elle repartira d'elle-même au passage du
+lendemain. C'est le même chemin qu'un abonné momentanément injoignable.
+
+Une réserve, tout de même : l'ordre du lot ne change pas d'un jour à l'autre. Si
+le plafond mord tous les jours, ce sont toujours les mêmes abonnés de fin de
+liste qui ne reçoivent rien.
+
+```
+500 relances à 10/min, plafond 300 :
+  300 parties, 200 reportées à demain
+  durée du passage : 30 minutes
+  refus signalés   : 200
+```
+
+**Un plafond qui mord tous les jours n'est donc pas un réglage** : c'est le
+signal qu'il faut une seconde SIM ou une vraie passerelle. `surRefus` est là
+pour qu'on l'apprenne autrement que par un abonné qui appelle.
+
 ## Ce qui n'est pas encore éprouvé
 
 **Le paquet n'est pas publié sur npm, et il ne le sera pas avant que cette liste

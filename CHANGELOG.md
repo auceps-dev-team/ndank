@@ -6,6 +6,45 @@ le reste.
 
 ---
 
+## 0.17.0
+
+### Ajouté
+
+**`ndank/envoi/limite`** — `limiter(transporteur, { parMinute, parJour })`,
+qui répond au premier des trois avertissements de la 0.16.0 : l'opérateur peut
+suspendre une SIM qui émet trop, trop vite.
+
+C'est un décorateur et non une option de l'adaptateur Android, parce que le
+besoin n'appartient à aucune passerelle : un hôte sur SIM protège sa carte, un
+hôte sur Twilio protège sa facture, et c'est le même mécanisme.
+
+**Deux mécanismes, et ils ne servent pas à la même chose.** L'espacement est la
+vraie protection — cinq cents relances à six secondes prennent cinquante
+minutes, ce qui est sans importance la nuit et déterminant pour la SIM. Le
+plafond est un garde-fou censé ne jamais se déclencher. N'avoir que lui serait
+pire : les premiers messages partiraient en rafale, la carte serait signalée dès
+le premier soir, et le plafond n'aurait rien empêché.
+
+L'attente varie de ±30 % : un message exactement toutes les six secondes ne
+ressemble à rien d'humain, et le hasard retire ce motif pour rien.
+
+**Un refus n'est pas une perte.** Au plafond, on rend `parti: false` plutôt que
+de lever : le moteur essaie le barreau suivant, la relance n'est pas notée, et
+elle repart d'elle-même le lendemain. C'est le chemin qu'un abonné
+momentanément injoignable emprunte déjà.
+
+Une réserve écrite dans le fichier : l'ordre du lot ne change pas d'un jour à
+l'autre, donc un plafond qui mord tous les jours prive toujours les mêmes
+abonnés. Ce n'est alors pas un réglage mais un signal — d'où `surRefus`.
+
+### Mesuré
+
+Sur deux vrais numéros ivoiriens, les trois paliers de relance tiennent chacun
+en **un seul segment** GSM-7 : 101 à 103 caractères, lien signé compris. Trois
+relances par abonné coûtent donc trois SMS, et non six.
+
+---
+
 ## 0.16.0
 
 ### Ajouté
