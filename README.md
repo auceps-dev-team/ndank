@@ -1424,6 +1424,47 @@ L'implémentation Prisma n'est pas encore écrite.
 Et l'agent qui tourne sur le téléphone reste à faire : aujourd'hui, la boucle
 « demander, émettre, acquitter » n'a pas de client officiel.
 
+### L'agent : celui qui vient chercher
+
+Le dernier morceau, et il n'a pas besoin d'être une application Android — ce
+cadrage était une erreur. Le problème n'a jamais été d'écrire une application
+mobile : il était que la passerelle et le serveur ne peuvent pas se joindre.
+
+L'agent tourne **chez le marchand**, sur une machine du même réseau que le
+téléphone, et se place entre les deux :
+
+```
+serveur du marchand  ←── long-poll ──  AGENT  ──→  téléphone
+   (Vercel, VPS)                    (au bureau)   (192.168.x.x)
+```
+
+Vers le serveur il appelle, donc le NAT est traversé. Vers le téléphone il est
+déjà sur le bon réseau. Les deux moitiés du problème se résolvent parce que
+quelqu'un se tient au milieu.
+
+```sh
+NDANK_FILE_BASE=https://mon-app.ci/sms NDANK_FILE_JETON=... SMS_BASE=http://192.168.1.42:8080 SMS_UTILISATEUR=sms SMS_MOT_DE_PASSE=... node node_modules/ndank/scripts/agent-sms.mjs
+```
+
+**Il ne sait pas envoyer un SMS, et c'est voulu.** Il reçoit un
+`TransporteurSms` et le lui confie : le même agent sert donc une passerelle
+Android, un modem USB, ou Twilio en dépannage, sans qu'une ligne de sa boucle ne
+change.
+
+Trois comportements valent d'être connus :
+
+- **il acquitte aussi les échecs.** Se taire laisserait les messages sous bail
+  plusieurs minutes, alors qu'on sait déjà qu'il faut réessayer ;
+- **il revérifie la péremption avant chaque envoi.** Avec six secondes
+  d'espacement, dix messages prennent une minute : le dernier peut avoir expiré
+  pendant qu'on envoyait les neuf premiers ;
+- **il s'arrête sur un 401.** Un jeton révoqué ne se réessaie pas ; boucler
+  dessus n'ajouterait que du bruit dans les journaux du serveur.
+
+Il ne s'arrête pas tout seul autrement : mettez-le sous `systemd`, `pm2`, ou
+dans un conteneur qui redémarre. **Un agent arrêté ne produit aucune erreur** —
+il produit du silence, et c'est la file qui grossit que `bilan()` verra.
+
 ### Éprouver la chaîne sans SIM
 
 ```sh

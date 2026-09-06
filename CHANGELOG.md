@@ -6,6 +6,53 @@ le reste.
 
 ---
 
+## 0.19.0
+
+### Ajouté
+
+**`ndank/file/agent`** — celui qui vient chercher. C'était le dernier morceau,
+annoncé comme « pas du TypeScript », et ce cadrage était faux.
+
+Le problème n'a jamais été d'écrire une application Android : il était que la
+passerelle et le serveur ne peuvent pas se joindre. L'agent tourne chez le
+marchand, sur une machine du même réseau que le téléphone, et se place entre les
+deux. Vers le serveur il appelle, donc le NAT est traversé ; vers le téléphone
+il est déjà sur le bon réseau. Les deux moitiés se résolvent parce que quelqu'un
+se tient au milieu.
+
+**Il ne sait pas envoyer un SMS.** Il reçoit un `TransporteurSms` et le lui
+confie : le même agent sert une passerelle Android, un modem USB ou Twilio, sans
+qu'une ligne de sa boucle ne change. C'est le motif du dépôt — une boucle sur
+des ports.
+
+**`scripts/agent-sms.mjs`** le lance depuis des variables d'environnement, et
+voyage dans le paquet : un marchand qui installe `ndank` le démarre sans cloner
+le dépôt.
+
+Trois arbitrages écrits dans le fichier : il acquitte aussi les échecs, sans
+quoi les messages resteraient sous bail alors qu'on sait déjà qu'il faut
+réessayer ; il revérifie la péremption avant **chaque** envoi, parce qu'un lot
+de dix à six secondes d'intervalle prend une minute et que le dernier peut avoir
+expiré ; et il s'arrête sur un 401, parce qu'un jeton révoqué ne se réessaie
+pas.
+
+### Corrigé
+
+**Le bac à sable éprouvait une ressemblance, pas le code livré.** Sa première
+version réimplémentait la boucle « demander, émettre, acquitter » à la main. Il
+utilise désormais `agentSms` — seule l'émission reste simulée.
+
+Le remplacement a immédiatement révélé un défaut du harnais : le test de
+concurrence identifiait les messages par leur identifiant de file, que le
+transporteur ne voit pas. Il compte maintenant les **numéros**, ce qui est de
+toute façon la bonne propriété : aucun abonné ne doit recevoir deux fois le même
+rappel.
+
+Vingt vérifications, zéro échec — dont 24 abonnés joints par deux agents
+simultanés, sans un doublon.
+
+---
+
 ## 0.18.1
 
 ### Ajouté

@@ -32,6 +32,7 @@
  */
 import { createServer } from "node:http";
 
+import { agentSms } from "../dist/file/agent.js";
 import { envoiCompose } from "../dist/envoi/compose.js";
 import { limiter } from "../dist/envoi/limite.js";
 import { fileEnMemoire } from "../dist/file/memoire.js";
@@ -94,48 +95,49 @@ function monter(routeur) {
 // ───────────────────────────────────────────────────────────── l'agent ──
 
 /**
- * Ce qu'un agent Android devra faire, à l'émission près.
+ * L'agent **livré**, et non une copie écrite pour l'occasion.
  *
- * Il demande, il émet, il acquitte, il redemande. Rien de plus.
+ * C'était le défaut de la première version de ce script : il réimplémentait la
+ * boucle « demander, émettre, acquitter » à la main. On éprouvait donc une
+ * ressemblance, pas le code que les hôtes feront tourner.
+ *
+ * `agentSms` reçoit un `TransporteurSms` et lui confie l'émission. Ici, ce
+ * transporteur ne fait rien — c'est la seule pièce simulée de tout ce script.
  */
 function agent(port, { emettre, jeton = JETON } = {}) {
-  const base = `http://127.0.0.1:${port}`;
-  const entetes = { authorization: `Bearer ${jeton}` };
-  let tourne = true;
+  const journal = { lots: 0, emis: 0, rates: 0, expires: 0 };
 
-  const journal = { lots: 0, emis: 0, rates: 0 };
+  const transporteur = {
+    nom: "simule",
+    canal: "sms",
+    async envoyer(ou, contenu) {
+      const parti = emettre ? await emettre({ telephone: ou.telephone, texte: contenu.texte }) : true;
+      return { parti, reference: parti ? `SIM-${Date.now()}` : null };
+    },
+  };
 
-  const boucle = (async () => {
-    while (tourne) {
-      const r = await fetch(`${base}/attente`, { headers: entetes });
-      if (r.status === 204) continue;
-      if (r.status !== 200) {
-        journal.refus = r.status;
-        break;
+  const a = agentSms({
+    base: `http://127.0.0.1:${port}`,
+    jeton,
+    transporteur,
+    pauseErreur: 200,
+    journal: (f) => {
+      if (f.quoi === "LOT") {
+        journal.lots += 1;
+        journal.emis += f.partis;
+        journal.expires += f.expires;
+        journal.rates += f.recus - f.partis - f.expires;
       }
+      if (f.quoi === "REFUSE") journal.refus = f.statut;
+    },
+  });
 
-      const lot = await r.json();
-      journal.lots += 1;
-
-      const accuses = [];
-      for (const m of lot) {
-        const parti = emettre ? await emettre(m) : true;
-        parti ? (journal.emis += 1) : (journal.rates += 1);
-        accuses.push({ id: m.id, parti, reference: parti ? `SIM-${m.id}` : null });
-      }
-
-      await fetch(`${base}/accuses`, {
-        method: "POST",
-        headers: { ...entetes, "content-type": "application/json" },
-        body: JSON.stringify(accuses),
-      });
-    }
-  })();
+  const boucle = a.demarrer();
 
   return {
     journal,
     async arreter() {
-      tourne = false;
+      a.arreter();
       await Promise.race([boucle, dormir(1500)]);
     },
   };
@@ -367,9 +369,12 @@ console.log("Seule la radio manque : l'agent est simulé, tout le reste est rée
   // message pris par l'un ne doit jamais être rendu à l'autre, sinon un abonné
   // recevrait deux fois le même rappel. Aucun test unitaire ne reproduit cela,
   // parce qu'un `Map` interrogé séquentiellement n'a pas de concurrence.
+  // On note le NUMÉRO et non l'identifiant de file : le transporteur ne voit
+  // pas l'id, et c'est de toute façon la bonne propriété à prouver — aucun
+  // abonné ne doit recevoir deux fois le même rappel.
   const vus = [];
   const emettre = async (m) => {
-    vus.push(m.id);
+    vus.push(m.telephone);
     await dormir(5);
     return true;
   };
@@ -383,17 +388,17 @@ console.log("Seule la radio manque : l'agent est simulé, tout le reste est rée
 
   const uniques = new Set(vus);
   console.log(
-    `  · ${vus.length} émissions, ${uniques.size} distinctes, ` +
+    `  · ${vus.length} émissions vers ${uniques.size} numéros distincts, ` +
       `${un.journal.lots} + ${deux.journal.lots} lots`,
   );
 
   verifier(
-    "tous les messages sont partis",
+    "les 24 abonnés ont tous été joints",
     uniques.size === combien,
     `${uniques.size}/${combien}`,
   );
   verifier(
-    "aucun n'est parti deux fois",
+    "aucun n'a reçu deux fois le même rappel",
     vus.length === uniques.size,
     `${vus.length - uniques.size} doublon(s)`,
   );
@@ -415,4 +420,4 @@ if (echecs > 0) {
 }
 
 console.log("\nLa chaîne tient, de la rédaction à l'accusé.");
-console.log("Ce qui reste non éprouvé : la radio, et donc l'agent Android réel.");
+console.log("Ce qui reste non éprouvé : la radio elle-même — une SIM, un opérateur.");
