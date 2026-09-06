@@ -6,6 +6,36 @@ le reste.
 
 ---
 
+## 0.18.1
+
+### Ajouté
+
+**`npm run bac-a-sable-sms`** — la chaîne SMS entière sur de vraies sockets et
+une vraie horloge, sans SIM.
+
+Les 684 tests passent, et ils passent avec des horloges injectées et des appels
+de fonction directs. Trois choses leur échappent par construction, et ce script
+les couvre :
+
+- **la latence**, affirmée jusqu'ici et désormais mesurée : 175 ms du dépôt à la
+  réception par l'agent, donc compatible avec un code de connexion ;
+- **le passage par HTTP** : le routeur est monté sur `node:http`, et la requête
+  traverse une vraie socket ;
+- **la concurrence** : deux agents sur la même file, 24 messages, 24 émissions
+  distinctes. C'est le bail qui tranche, et aucun test unitaire ne le démontrait.
+
+Il couvre aussi le bail après mort de l'agent, les refus de la route à travers
+HTTP, et le constat `FILE_SMS` de `bilan()`.
+
+Vingt vérifications, zéro échec au premier passage.
+
+**L'agent y est simulé**, et c'est la seule chose à savoir : `emettre()` rend
+« parti » sans rien émettre. La boucle « demander, émettre, acquitter » est en
+revanche écrite exactement comme un agent Android devra la faire — le script
+vaut donc de spécification pour qui l'écrira.
+
+---
+
 ## 0.18.0
 
 ### Ajouté

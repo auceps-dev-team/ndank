@@ -1424,6 +1424,31 @@ L'implémentation Prisma n'est pas encore écrite.
 Et l'agent qui tourne sur le téléphone reste à faire : aujourd'hui, la boucle
 « demander, émettre, acquitter » n'a pas de client officiel.
 
+### Éprouver la chaîne sans SIM
+
+```sh
+npm run bac-a-sable-sms
+```
+
+Vingt vérifications sur de **vraies sockets** et une **vraie horloge**. Trois
+choses échappent par construction aux tests unitaires, qui injectent l'horloge
+et appellent les fonctions directement :
+
+- **la latence réelle.** On affirmait que le long-polling libère « en quelques
+  centaines de millisecondes ». C'est maintenant mesuré : **175 ms** du dépôt à
+  la réception par l'agent ;
+- **le passage par HTTP.** Entre `routeurFile` et un agent, il y a un serveur,
+  un corps à lire, des en-têtes à poser. Le script monte le routeur sur
+  `node:http` — vingt lignes, celles que l'hôte écrira ;
+- **la concurrence.** Deux agents qui tirent la même file au même instant :
+  24 messages, 24 émissions distinctes, aucun doublon. C'est le bail qui
+  tranche, et un `Map` interrogé séquentiellement ne le démontre pas.
+
+L'agent y est simulé — `emettre()` rend « parti » sans rien émettre. **Tout le
+reste est réel**, et la boucle « demander, émettre, acquitter » y est écrite
+exactement comme un agent Android devra la faire : le script vaut donc aussi de
+spécification pour qui l'écrira.
+
 ## Envoyer moins vite, pour continuer à envoyer
 
 Deux hôtes ont le même besoin pour deux raisons opposées. Celui qui passe par
