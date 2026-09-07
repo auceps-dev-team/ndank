@@ -655,6 +655,39 @@ de terminaison.
 correspond plus. Avec Express, `express.raw({ type: "*/*" })` sur cette route,
 et surtout **pas** `express.json()`.
 
+### La signature de Flutterwave n'authentifie pas le corps
+
+C'est le constat le plus sérieux de l'épreuve du 7 septembre 2026, et il ne se
+corrige pas dans Ndank — mais il faut le connaître avant de brancher un
+webhook Flutterwave.
+
+Paystack signe le corps : `x-paystack-signature` est un HMAC-SHA512 du contenu.
+Changer un octet invalide la signature.
+
+Flutterwave envoie le **secret lui-même**, en clair, dans `verif-hash`. Il
+prouve que l'émetteur connaît le secret. Il ne dit rien du contenu. Mesuré sur
+un webhook réellement reçu :
+
+```
+· corps modifié accepté, montant relu : 200000 XOF
+```
+
+En remplaçant `"amount":2000` par `"amount":200000`, la vérification passe
+toujours. Et comme `reconcilier` passe `issue.montant` à `regler`, un corps
+gonflé achète du temps d'abonnement.
+
+Deux conséquences pratiques :
+
+**Le secret voyage à chaque requête.** Tout ce qui journalise les en-têtes le
+capture — un proxy, une sonde, un service de capture. Un HMAC ne livre qu'un
+condensé, inutilisable pour forger un autre corps. **Traitez le secret hash
+comme un mot de passe**, et changez-le s'il a pu être vu.
+
+**Ne croyez pas le montant du webhook.** Un hôte prudent traite le webhook
+Flutterwave comme un signal — « va regarder » — et relit l'état par
+`constater`, qui passe par un appel authentifié. C'est exactement la conduite
+que l'adaptateur MTN impose déjà, faute de signature du tout.
+
 ### L'interrogation n'est pas un repli du webhook
 
 Les deux chemins doivent pouvoir conclure. Un webhook se perd — le service
@@ -1751,25 +1784,22 @@ Restent quatre paris, dont deux à moitié levés.
       a trouvé deux défauts qu'aucun test ne pouvait voir : la raison d'un échec
       qu'on jetait, et le mode local qui visait le mauvais chemin.
 
-- [ ] **Flutterwave et MTN.** Flutterwave demande une invitation, rend un
-      constat, et **avance un cycle** — `npm run bac-a-sable-cycle` déroule le
-      chemin complet contre un paiement réellement réglé en bac à sable :
+- [ ] **Flutterwave et MTN.** **Flutterwave est levé.** Le chemin entier a
+      tourné contre du réel, le 7 septembre 2026 : invitation, paiement mené à
+      son terme sur un vrai numéro, **webhook signé reçu**, rejoué octet pour
+      octet, cycle avancé, accès rouvert, rejeu sans effet.
 
       ```
-      ▸ L'abonnement avant : SUSPENDUE, accès coupé
-      ▸ Ce que Ndank décide : RENOUVELER
-      ▸ L'abonnement après  : échéance +30 j, ACTIVE, accès ouvert
-      ▸ Le même paiement, rejoué : RIEN — déjà compté
+      ▸ La signature
+        ✓ le corps réel passe la vérification
+        ✓ un mauvais secret est refusé
+      ▸ Du webhook au cycle
+        avant : SUSPENDUE, accès coupé
+        après : ACTIVE, accès ouvert (+30 j)
+        ✓ le rejeu du webhook ne prolonge pas deux fois
       ```
 
-      La réponse du fournisseur est authentique ; seul le stockage est en
-      mémoire. Le garde-fou de référence s'est déclenché au premier passage,
-      contre une vraie référence : « versement fabriqué pour l'abonnement X,
-      présenté sur Y ».
-
-      **Reste le webhook.** `lireWebhook` vérifie une signature `verif-hash`
-      qu'aucun envoi réel n'a produite. Il faudrait une adresse publique et un
-      paiement mené à son terme depuis l'extérieur.
+      `npm run bac-a-sable-webhook` le rejoue depuis une capture.
 
       **MTN n'a jamais été appelé.**
 

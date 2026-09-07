@@ -1,6 +1,6 @@
 {
   "name": "ndank",
-  "version": "0.20.2",
+  "version": "0.20.3",
   "description": "Abonnements par mobile money, sans carte bancaire.",
   "type": "module",
   "main": "./dist/moteur.cjs",
@@ -493,7 +493,8 @@
     "bac-a-sable": "npm run build && node scripts/bac-a-sable.mjs",
     "apercu": "npm run build && node scripts/apercu.mjs",
     "bac-a-sable-sms": "npm run build && node scripts/bac-a-sable-sms.mjs",
-    "bac-a-sable-cycle": "npm run build && node scripts/bac-a-sable-cycle.mjs"
+    "bac-a-sable-cycle": "npm run build && node scripts/bac-a-sable-cycle.mjs",
+    "bac-a-sable-webhook": "npm run build && node scripts/bac-a-sable-webhook.mjs"
   },
   "keywords": [
     "abonnement",

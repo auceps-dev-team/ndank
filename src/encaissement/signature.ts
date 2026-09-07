@@ -91,6 +91,37 @@ export function verifierFlutterwave(
     return memeSecret(attendue, moderne.trim().toLowerCase());
   }
 
+  /**
+   * L'ancienne forme : le secret lui-même, en clair, dans l'en-tête.
+   *
+   * ═══════════════════════════════════════════════════════════════════════
+   * ELLE N'AUTHENTIFIE PAS LE CORPS, ET C'EST MESURÉ
+   *
+   * Un HMAC lie la signature au contenu : changer un octet du corps invalide
+   * la signature. Un secret partagé, non. Il prouve seulement que l'émetteur
+   * connaît le secret.
+   *
+   * Constaté le 7 septembre 2026, sur un webhook réellement reçu : en
+   * remplaçant `"amount":2000` par `"amount":200000` dans le corps, la
+   * vérification passe toujours et `lireWebhook` rend 200 000 XOF.
+   *
+   * La conséquence est directe : `reconcilier` passe `issue.montant` à
+   * `regler`, donc un corps gonflé achète du temps d'abonnement.
+   *
+   * Deux choses en découlent, et elles valent d'être sues :
+   *
+   *   — **le secret voyage à chaque requête**, en clair dans un en-tête. Tout
+   *     ce qui journalise les en-têtes le capture — un proxy, une sonde, un
+   *     bac de capture. Un HMAC, lui, ne livre qu'un condensé inutilisable
+   *     pour forger un autre corps ;
+   *   — **un hôte qui reçoit du Flutterwave ne devrait pas croire le montant
+   *     du webhook.** Le traiter comme un signal — « va regarder » — et
+   *     relire l'état par `constater`, qui passe par un appel authentifié,
+   *     est la seule façon d'en être sûr.
+   *
+   * On ne peut pas le corriger ici : c'est la forme que le fournisseur envoie.
+   * On peut le dire.
+   */
   const ancien = entetes["verif-hash"];
   if (ancien) return memeSecret(secret, ancien.trim());
 

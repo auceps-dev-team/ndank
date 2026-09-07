@@ -6,6 +6,42 @@ le reste.
 
 ---
 
+## 0.20.3
+
+### Éprouvé
+
+**Le webhook Flutterwave, reçu pour de vrai et rejoué octet pour octet.**
+C'était le dernier chemin qui n'avait jamais vu un fournisseur — et c'est celui
+par lequel un paiement se confirme tout seul.
+
+Un paiement mené à son terme sur un vrai numéro ivoirien, le webhook capté avec
+son corps brut et son en-tête `verif-hash`, puis rendu à la bibliothèque : la
+signature passe, un mauvais secret est refusé, l'issue est lue, le cycle avance,
+l'accès rouvre, et le rejeu ne prolonge pas deux fois.
+
+`npm run bac-a-sable-webhook`. Dix vérifications, zéro échec.
+
+### Constaté, et grave
+
+**La signature de Flutterwave n'authentifie pas le corps.** Paystack signe le
+contenu en HMAC-SHA512 ; Flutterwave envoie le secret lui-même en clair dans un
+en-tête. Il prouve que l'émetteur connaît le secret, et rien de plus.
+
+Mesuré sur le webhook réel : en remplaçant `"amount":2000` par
+`"amount":200000`, la vérification passe et `lireWebhook` rend 200 000 XOF. Or
+`reconcilier` passe `issue.montant` à `regler` — donc un corps gonflé achète du
+temps d'abonnement.
+
+Deux conséquences écrites dans `signature.ts` et dans le README. Le secret
+voyage à chaque requête et tout ce qui journalise les en-têtes le capture. Et un
+hôte prudent ne croit pas le montant du webhook : il le traite comme un signal
+et relit l'état par `constater`, qui passe par un appel authentifié.
+
+Cela ne se corrige pas ici — c'est la forme que le fournisseur envoie. Cela se
+dit.
+
+---
+
 ## 0.20.2
 
 ### Corrigé
