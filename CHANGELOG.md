@@ -6,6 +6,34 @@ le reste.
 
 ---
 
+## 0.19.2
+
+### Corrigé
+
+**Le mode local n'avait jamais pu fonctionner.** Le commentaire affirmait que le
+chemin de l'API était « commun au mode local et au mode nuage ». C'était faux, et
+personne ne pouvait le savoir sans brancher un vrai téléphone :
+
+- le **serveur** — `api.sms-gate.app`, ou le même logiciel auto-hébergé —
+  expose `/3rdparty/v1/messages` ;
+- l'**appareil** lui-même expose `/message`.
+
+Un appel au chemin du serveur sur le téléphone rend `404`, sans autre indice.
+C'est donc le mode qu'on recommande pour la confidentialité — celui où rien ne
+transite par un tiers — qui était le seul cassé.
+
+`ConfigPasserelleAndroid` prend désormais `mode: "serveur" | "appareil"`,
+`"serveur"` par défaut. **On ne le devine pas depuis l'adresse** : un serveur
+auto-hébergé peut vivre sur une adresse privée en `http`, exactement comme un
+téléphone.
+
+Le suivi d'état suit le même chemin que l'envoi — se tromper là donnerait un
+message qui part et un suivi éternellement « inconnu ».
+
+Constaté au premier branchement d'un vrai téléphone, le 7 septembre 2026.
+
+---
+
 ## 0.19.1
 
 ### Corrigé

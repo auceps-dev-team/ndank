@@ -69,8 +69,29 @@ import type { Sms } from "../redaction";
  * l'opérateur aussi. Cinq cents abonnés passent ; cinquante mille non.
  */
 
-/** Le chemin de l'API tierce, commun au mode local et au mode nuage. */
-const CHEMIN = "/3rdparty/v1/messages";
+/**
+ * Les deux API, et elles ne portent pas le même chemin.
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ * ON CROYAIT QU'IL Y EN AVAIT UN SEUL — LE MODE LOCAL N'A JAMAIS MARCHÉ
+ *
+ * Le commentaire disait « commun au mode local et au mode nuage ». C'était faux,
+ * et personne ne pouvait le savoir sans brancher un téléphone :
+ *
+ *   — le **serveur** (api.sms-gate.app, ou le même logiciel auto-hébergé)
+ *     expose `/3rdparty/v1/messages` ;
+ *   — l'**appareil** lui-même, en mode local, expose `/message`.
+ *
+ * Un `GET /3rdparty/v1/messages` sur le téléphone rend `404`. C'est donc le
+ * mode qu'on recommande pour la confidentialité — rien ne transite par un tiers
+ * — qui était le seul à ne pas fonctionner.
+ *
+ * Constaté le 7 septembre 2026, au premier branchement d'un vrai téléphone.
+ */
+const CHEMINS = {
+  serveur: "/3rdparty/v1/messages",
+  appareil: "/message",
+} as const;
 
 export interface ConfigPasserelleAndroid {
   /**
@@ -83,6 +104,24 @@ export interface ConfigPasserelleAndroid {
   /** L'identifiant affiché par l'application, dans ses réglages. */
   utilisateur: string;
   motDePasse: string;
+  /**
+   * À quoi l'on parle : au serveur, ou au téléphone lui-même.
+   *
+   * ═══════════════════════════════════════════════════════════════════════
+   * CE N'EST PAS LA MÊME API, ET C'EST INVISIBLE À LA LECTURE
+   *
+   * `"serveur"` par défaut — `api.sms-gate.app`, ou le même logiciel
+   * auto-hébergé. C'est ce que la plupart des hôtes emploient.
+   *
+   * `"appareil"` quand `base` désigne le téléphone sur le réseau local :
+   * `http://192.168.1.42:8080`. Il n'expose pas les mêmes chemins, et se
+   * tromper donne un `404` sans autre indice.
+   *
+   * On ne le devine pas depuis l'adresse : un serveur auto-hébergé peut vivre
+   * sur une adresse privée en `http`, exactement comme un téléphone.
+   */
+  mode?: "serveur" | "appareil";
+
   /** Quel appareil, quand plusieurs téléphones sont enrôlés. */
   appareil?: string;
   /** Quelle SIM, sur un téléphone qui en porte plusieurs. De 1 à 3. */
@@ -129,6 +168,7 @@ export function passerelleAndroid(
 ): TransporteurSms {
   const http = config.http ?? httpParDefaut;
   const base = config.base.replace(/\/+$/, "");
+  const chemin = CHEMINS[config.mode ?? "serveur"];
 
   return {
     nom: "passerelle-android",
@@ -144,7 +184,7 @@ export function passerelleAndroid(
       const reponse = objet(
         await appelJson("passerelle-android", http, {
           methode: "POST",
-          url: `${base}${CHEMIN}`,
+          url: `${base}${chemin}`,
           entetes: {
             Authorization: basique(config.utilisateur, config.motDePasse),
             "Content-Type": "application/json",
@@ -212,7 +252,7 @@ export async function etatDuMessage(
   const reponse = objet(
     await appelJson("passerelle-android", http, {
       methode: "GET",
-      url: `${base}${CHEMIN}/${encodeURIComponent(id)}`,
+      url: `${base}${CHEMINS[config.mode ?? "serveur"]}/${encodeURIComponent(id)}`,
       entetes: {
         Authorization: basique(config.utilisateur, config.motDePasse),
       },

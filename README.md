@@ -1214,7 +1214,8 @@ Cinq choses, et la quatrième est celle qu'on découvre trop tard.
 4. **La joignabilité.** Votre serveur doit pouvoir atteindre ce téléphone, et
    c'est là que le choix se fait :
 
-   — en **mode local**, le serveur et le téléphone sont sur le même réseau
+   — en **mode local** (`mode: "appareil"` — l'API du téléphone n'est pas
+   celle du serveur), le serveur et le téléphone sont sur le même réseau
    (`http://192.168.1.42:8080`). Rien ne transite chez personne. Mais votre
    serveur doit être dans ce réseau — ce qui exclut un hébergement distant ;
 

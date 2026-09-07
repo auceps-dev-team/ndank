@@ -248,3 +248,39 @@ describe("la raison d'un échec, là où la passerelle la range vraiment", () =>
     expect((await etatDuMessage({ ...CONFIG, http: f.http }, "x")).raison).toBeNull();
   });
 });
+
+describe("les deux API : le serveur et l'appareil", () => {
+  it("vise le serveur par défaut", async () => {
+    const f = fausseHttp([{ corps: { id: "x", state: "Pending" } }]);
+
+    await passerelleAndroid({ ...CONFIG, http: f.http }).envoyer(AWA, SMS);
+
+    expect(f.vues[0]!.url).toBe(
+      "http://192.168.1.42:8080/3rdparty/v1/messages",
+    );
+  });
+
+  it("vise `/message` quand on parle au téléphone lui-même", async () => {
+    // Le mode local n'a jamais fonctionné avant la 0.19.2 : on lui envoyait le
+    // chemin du serveur, et il répondait 404. C'est-à-dire que le mode qu'on
+    // recommande pour la confidentialité était le seul cassé.
+    const f = fausseHttp([{ corps: { id: "x", state: "Pending" } }]);
+
+    await passerelleAndroid({ ...CONFIG, mode: "appareil", http: f.http }).envoyer(
+      AWA,
+      SMS,
+    );
+
+    expect(f.vues[0]!.url).toBe("http://192.168.1.42:8080/message");
+  });
+
+  it("relit l'état sur le même chemin que l'envoi", async () => {
+    // Se tromper ici donnerait un envoi qui part et un suivi qui rend 404 :
+    // le message serait éternellement « inconnu ».
+    const f = fausseHttp([{ corps: { id: "zX", state: "Delivered" } }]);
+
+    await etatDuMessage({ ...CONFIG, mode: "appareil", http: f.http }, "zX");
+
+    expect(f.vues[0]!.url).toBe("http://192.168.1.42:8080/message/zX");
+  });
+});
