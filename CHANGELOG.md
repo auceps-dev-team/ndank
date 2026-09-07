@@ -6,6 +6,36 @@ le reste.
 
 ---
 
+## 0.20.5
+
+### Éprouvé
+
+**`POST /projection` a atteint un serveur.** C'était la dernière case que
+personne ne pouvait fermer seul : elle attendait que Ndank App serve la route.
+
+Le vrai `pousser` de cette bibliothèque, sur de vraies sockets — 250 lignes
+fabriquées par `projectionDe`, découpées en trois lots, rejouées sans doublon,
+et la route qui refuse en 403 un site annoncé pour un autre projet.
+
+Trois choses échappaient par construction aux tests des deux côtés : le
+découpage en lots, qui n'avait jamais tourné contre un serveur qui réponde ; les
+en-têtes réellement composés, et non ceux qu'un test imagine ; et la forme du
+corps telle que `JSON.stringify` la rend, dates ISO comprises.
+
+Quatorze vérifications, zéro échec, **reproduites de part et d'autre**.
+
+### Un constat que l'écriture d'en face a rapporté
+
+**Un hôte ne pousse jamais une ligne `EXPIREE`.** `aProjeter` refuse tout ce qui
+dépasse la fenêtre de reprise — une carte n'atteint donc cet état qu'en
+vieillissant chez le receveur, après le silence de l'hôte.
+
+La conséquence n'appartient pas à cette bibliothèque mais elle vaut d'être
+sue : **c'est le seuil de purge du receveur qui décide combien de temps un
+abonné continue de voir un abonnement fini.**
+
+---
+
 ## 0.20.4
 
 ### Changement incompatible

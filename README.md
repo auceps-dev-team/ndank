@@ -1774,7 +1774,7 @@ schéma à un vrai PostgreSQL (Prisma 6.19.3, branche `Ndank-Baobart-Test`).
       est identique avant et après. Le retour arrière est bien celui de
       PostgreSQL.
 
-Restent quatre paris, dont deux à moitié levés.
+Restent deux paris, tous deux à moitié levés.
 
 - [ ] **Les passerelles d'envoi.** Cinq sont écrites ; **deux ont émis pour de
       vrai**.
@@ -1838,9 +1838,26 @@ Restent quatre paris, dont deux à moitié levés.
       2 000 part comme 2 000 quelle que soit la convention. Sans la commission
       qui trahit l'échelle, il aurait fallu une devise à décimales.
 
-- [ ] **`POST /projection`.** Jamais atteint un serveur, puisque
-      [Ndank App](https://github.com/auceps-dev-team/Ndank-app) ne le sert pas
-      encore. Le client, lui, est importable et compose ses lots.
+- [x] **`POST /projection`.** Atteint un vrai serveur le 7 septembre 2026,
+      quand Ndank App a servi la route. Le vrai `pousser` de cette
+      bibliothèque, sur de vraies sockets :
+
+      ```
+      1. Poussée de 250 lignes, par lots de 100
+        ok  les 250 lignes sont parties
+        ok  découpées en 3 lots
+      2. La même poussée, rejouée
+        ok  toujours 250 cartes, pas 500
+      3. Ce qui a traversé
+        ok  l'échéance est intacte
+        ok  l'empreinte est celle de `projectionDe`
+      4. Ce que la route refuse
+        ok  annoncer le site d'un autre est refusé en 403
+      ```
+
+      Le découpage en lots, les en-têtes réellement composés et les dates
+      converties en ISO n'avaient jamais traversé HTTP. Quatorze vérifications,
+      zéro échec, reproduites de part et d'autre.
 
 ### Ce que l'installation a appris en plus
 
