@@ -6,6 +6,40 @@ le reste.
 
 ---
 
+## 0.20.1
+
+### Éprouvé
+
+**`npm run bac-a-sable-cycle`** — le chemin qui décide si un abonné garde son
+accès, déroulé contre un paiement réellement réglé.
+
+C'était le trou le plus sérieux du dépôt : on savait demander un paiement et
+constater qu'il avait eu lieu, on n'avait jamais prouvé qu'on en tirait les
+conséquences. Le chemin *paiement confirmé → `reconcilier` → versement compté →
+échéance repoussée* n'avait couru que contre des faux.
+
+Il tient. Un abonnement suspendu, accès coupé, redevient actif et accès ouvert,
+échéance repoussée de trente jours. Rejoué, le même versement ne prolonge pas
+une seconde fois.
+
+Deux choses trouvées en l'écrivant, et toutes deux du bon côté :
+
+**Le garde-fou de référence s'est déclenché** — contre une vraie référence, et
+correctement : « versement fabriqué pour l'abonnement essaimtob3l31, présenté
+sur abo-essai ». C'est la protection ajoutée en 0.7.0, jamais vue à l'œuvre
+jusqu'ici.
+
+**`RENOUVELER` porte le cycle qu'il vient de calculer.** Le script le
+recalculait à la main avec `cycleApresPaiement` — deux calculs finiraient par
+diverger, et c'est l'abonné qui verrait la différence. Il lit maintenant
+`decision.cycle`.
+
+Et une leçon pour qui écrira sa propre `Creances` : le dépôt exporte
+`CREANCE_VIERGE`. Un état écrit à la main sans `joursAccordes` produit un cycle
+dont la date est invalide, sans erreur.
+
+---
+
 ## 0.20.0
 
 ### Ajouté

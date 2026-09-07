@@ -1725,21 +1725,25 @@ Restent quatre paris, dont deux à moitié levés.
       a trouvé deux défauts qu'aucun test ne pouvait voir : la raison d'un échec
       qu'on jetait, et le mode local qui visait le mauvais chemin.
 
-- [ ] **Flutterwave et MTN.** Flutterwave **demande une invitation** et **rend
-      un constat** : l'authentification, la charge en mobile money et
-      `verify_by_reference` sont éprouvés avec de vraies clés.
+- [ ] **Flutterwave et MTN.** Flutterwave demande une invitation, rend un
+      constat, et **avance un cycle** — `npm run bac-a-sable-cycle` déroule le
+      chemin complet contre un paiement réellement réglé en bac à sable :
 
-      **Mais rien n'a jamais bouclé.** Deux trous restent, et le second est le
-      plus sérieux du dépôt :
+      ```
+      ▸ L'abonnement avant : SUSPENDUE, accès coupé
+      ▸ Ce que Ndank décide : RENOUVELER
+      ▸ L'abonnement après  : échéance +30 j, ACTIVE, accès ouvert
+      ▸ Le même paiement, rejoué : RIEN — déjà compté
+      ```
 
-      — **le webhook n'a jamais été reçu.** `lireWebhook` vérifie une signature
-      `verif-hash` qu'aucun envoi réel n'a produite. Il faudrait une adresse
-      publique et un paiement mené à son terme ;
+      La réponse du fournisseur est authentique ; seul le stockage est en
+      mémoire. Le garde-fou de référence s'est déclenché au premier passage,
+      contre une vraie référence : « versement fabriqué pour l'abonnement X,
+      présenté sur Y ».
 
-      — **aucun paiement n'a jamais avancé un cycle.** C'est le chemin complet
-      — paiement confirmé → `reconcilier` → `Versement` compté → échéance
-      repoussée — et il n'a tourné que contre des faux. C'est pourtant le seul
-      qui décide si un abonné garde son accès.
+      **Reste le webhook.** `lireWebhook` vérifie une signature `verif-hash`
+      qu'aucun envoi réel n'a produite. Il faudrait une adresse publique et un
+      paiement mené à son terme depuis l'extérieur.
 
       **MTN n'a jamais été appelé.**
 
