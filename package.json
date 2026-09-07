@@ -1,6 +1,6 @@
 {
   "name": "ndank",
-  "version": "0.19.3",
+  "version": "0.20.0",
   "description": "Abonnements par mobile money, sans carte bancaire.",
   "type": "module",
   "main": "./dist/moteur.cjs",
@@ -335,6 +335,16 @@
       "require": {
         "types": "./dist/file/memoire.d.cts",
         "default": "./dist/file/memoire.cjs"
+      }
+    },
+    "./envoi/transporteurs/passerelle-android": {
+      "import": {
+        "types": "./dist/envoi/transporteurs/passerelle-android.d.ts",
+        "default": "./dist/envoi/transporteurs/passerelle-android.js"
+      },
+      "require": {
+        "types": "./dist/envoi/transporteurs/passerelle-android.d.cts",
+        "default": "./dist/envoi/transporteurs/passerelle-android.cjs"
       }
     },
     "./envoi/limite": {

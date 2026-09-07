@@ -304,3 +304,263 @@ function raisonDe(reponse: Record<string, unknown>): string | null {
   // ligne, pas dix.
   return causes.length === 0 ? null : [...new Set(causes)].join(" ; ");
 }
+
+// ────────────────────────────────────────────────────────── le diagnostic ──
+
+/**
+ * Ce que le diagnostic a trouvé, dit à quelqu'un qui n'écrit pas de code.
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ * POURQUOI CECI EXISTE
+ *
+ * Le premier branchement d'un vrai téléphone a demandé quatre tentatives et une
+ * heure. Rien n'était compliqué : une permission Android qui se donne en trois
+ * gestes, dont un qu'on saute naturellement. Mais la passerelle répondait
+ * « Failed », et rien ne disait quoi faire.
+ *
+ * Un marchand ivoirien qui installe Ndank ne lira pas la documentation d'Android
+ * en anglais pour comprendre `uid 10657 does not have SEND_SMS`. Il conclura que
+ * cela ne marche pas.
+ *
+ * Ce diagnostic traduit. C'est cent lignes qui remplacent une heure.
+ */
+export interface ConstatPasserelle {
+  /** Est-ce que ce point-là va ? */
+  va: boolean;
+  /** De quoi il s'agit. Stable, pour qu'un écran puisse s'en servir de clé. */
+  quoi: "JOIGNABLE" | "IDENTIFIANTS" | "MODE" | "PERMISSION" | "RESEAU" | "ENVOIS";
+  /** Ce qui a été constaté. */
+  constat: string;
+  /** Ce qu'il faut faire. Vide quand il n'y a rien à faire. */
+  quoiFaire: string;
+}
+
+/**
+ * Les erreurs d'Android, traduites en gestes.
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ * LA TABLE EST LE CŒUR DE CE FICHIER
+ *
+ * Chaque entrée vient d'un message qu'Android rend tel quel, en anglais, à
+ * quelqu'un qui n'a pas demandé à en lire. Les traduire n'est pas de la
+ * courtoisie : c'est la différence entre une panne qu'on répare en trente
+ * secondes et une passerelle qu'on abandonne.
+ *
+ * La première a été rencontrée pour de vrai le 7 septembre 2026. Les autres
+ * viennent des codes que l'API SmsManager d'Android peut rendre — elles ne se
+ * sont pas encore produites ici, et il faut le savoir.
+ */
+const TRADUCTIONS: ReadonlyArray<{
+  motif: RegExp;
+  quoi: ConstatPasserelle["quoi"];
+  constat: string;
+  quoiFaire: string;
+}> = [
+  {
+    motif: /SEND_SMS/i,
+    quoi: "PERMISSION",
+    constat: "Android n'autorise pas l'application à envoyer des SMS.",
+    quoiFaire:
+      "Trois gestes, dans cet ordre — le deuxième est celui qu'on saute :\n" +
+      "  1. Paramètres → Applications → SMSGate → menu ⋮ → « Autoriser les " +
+      "paramètres restreints » (une application installée hors magasin en a " +
+      "besoin) ;\n" +
+      "  2. Autorisations → SMS → « Ne pas autoriser », puis « Autoriser » à " +
+      "nouveau. L'octroi précédent datait d'avant la levée de restriction ;\n" +
+      "  3. Forcer l'arrêt de l'application, puis la rouvrir et redémarrer le " +
+      "service.",
+  },
+  {
+    motif: /RADIO_OFF|airplane/i,
+    quoi: "RESEAU",
+    constat: "La radio du téléphone est éteinte.",
+    quoiFaire: "Désactivez le mode avion.",
+  },
+  {
+    motif: /NO_SERVICE|no service/i,
+    quoi: "RESEAU",
+    constat: "Le téléphone n'a pas de réseau mobile.",
+    quoiFaire:
+      "Vérifiez la couverture et que la carte SIM est bien insérée et active.",
+  },
+  {
+    motif: /LIMIT_EXCEEDED/i,
+    quoi: "ENVOIS",
+    constat: "Android a bloqué l'envoi : trop de SMS en peu de temps.",
+    quoiFaire:
+      "C'est une limite du système, pas de l'opérateur. Baissez `parMinute` " +
+      "dans `limiter` — dix par minute passe partout.",
+  },
+  {
+    motif: /NULL_PDU|GENERIC_FAILURE/i,
+    quoi: "ENVOIS",
+    constat: "Android a refusé l'envoi sans en dire la raison.",
+    quoiFaire:
+      "Vérifiez le crédit de la carte SIM, puis le numéro du destinataire. " +
+      "C'est le message qu'Android rend quand il n'a rien de plus précis.",
+  },
+];
+
+/** Traduit une cause brute, ou rend `null` si on ne la connaît pas. */
+function traduire(cause: string): ConstatPasserelle | null {
+  for (const t of TRADUCTIONS) {
+    if (t.motif.test(cause)) {
+      return { va: false, quoi: t.quoi, constat: t.constat, quoiFaire: t.quoiFaire };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Interroge la passerelle et dit, en français, ce qui ne va pas.
+ *
+ * ```ts
+ * for (const c of await diagnostiquerAndroid(config)) {
+ *   console.log(`${c.va ? "✓" : "✗"} ${c.constat}`);
+ *   if (c.quoiFaire) console.log(`  ${c.quoiFaire}`);
+ * }
+ * ```
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ * IL N'ENVOIE AUCUN SMS
+ *
+ * Il lit ce que la passerelle garde des envois récents. Un diagnostic qui coûte
+ * un SMS ne se lance pas au démarrage, et ne se lance donc jamais.
+ *
+ * Conséquence à connaître : sur une passerelle qui n'a **rien** émis, il ne peut
+ * pas dire si la permission est accordée. Il le dit plutôt que de rassurer à
+ * tort.
+ */
+export async function diagnostiquerAndroid(
+  config: ConfigPasserelleAndroid,
+): Promise<readonly ConstatPasserelle[]> {
+  const http = config.http ?? httpParDefaut;
+  const base = config.base.replace(/\/+$/, "");
+  const mode = config.mode ?? "serveur";
+  const chemin = CHEMINS[mode];
+
+  let reponse;
+  try {
+    reponse = await http({
+      methode: "GET",
+      url: `${base}${chemin}`,
+      entetes: { Authorization: basique(config.utilisateur, config.motDePasse) },
+    });
+  } catch (cause) {
+    return [
+      {
+        va: false,
+        quoi: "JOIGNABLE",
+        constat: `La passerelle ne répond pas à ${base}.`,
+        quoiFaire:
+          mode === "appareil"
+            ? "Le téléphone dort probablement : Android coupe le Wi-Fi dès que " +
+              "l'écran s'éteint. Désactivez l'optimisation de batterie pour " +
+              "l'application et gardez le Wi-Fi actif en veille — ou passez en " +
+              "mode nuage, où c'est le téléphone qui maintient la liaison.\n" +
+              `  (${String(cause).slice(0, 120)})`
+            : `Vérifiez l'adresse et la connexion. (${String(cause).slice(0, 120)})`,
+      },
+    ];
+  }
+
+  if (reponse.statut === 401 || reponse.statut === 403) {
+    return [
+      {
+        va: false,
+        quoi: "IDENTIFIANTS",
+        constat: "La passerelle refuse l'identifiant ou le mot de passe.",
+        quoiFaire:
+          "Ils sont affichés dans l'application, écran d'accueil. Attention à " +
+          "ne pas mélanger ceux du serveur local et ceux du nuage : ce sont " +
+          "deux couples différents.",
+      },
+    ];
+  }
+
+  if (reponse.statut === 404) {
+    return [
+      {
+        va: false,
+        quoi: "MODE",
+        constat: `La passerelle ne connaît pas le chemin ${chemin}.`,
+        quoiFaire:
+          mode === "serveur"
+            ? "Vous parlez sans doute au téléphone directement, et non au " +
+              "serveur. Posez `mode: \"appareil\"` — le téléphone n'expose pas " +
+              "la même API."
+            : "Vous parlez sans doute au serveur, et non au téléphone. Retirez " +
+              "`mode: \"appareil\"`.",
+      },
+    ];
+  }
+
+  const constats: ConstatPasserelle[] = [
+    {
+      va: true,
+      quoi: "JOIGNABLE",
+      constat: `La passerelle répond, et les identifiants passent (${base}).`,
+      quoiFaire: "",
+    },
+  ];
+
+  // ── ce que les envois récents racontent ─────────────────────────────────
+  let messages: unknown;
+  try {
+    messages = JSON.parse(reponse.corps);
+  } catch {
+    return constats;
+  }
+
+  if (!Array.isArray(messages) || messages.length === 0) {
+    constats.push({
+      va: true,
+      quoi: "ENVOIS",
+      constat: "Aucun envoi récent : rien à examiner.",
+      quoiFaire:
+        "On ne peut donc pas dire si la permission d'envoi est accordée — " +
+        "cela ne se voit qu'en essayant. Envoyez un SMS à votre propre numéro " +
+        "pour en avoir le cœur net.",
+    });
+    return constats;
+  }
+
+  const causes = new Set<string>();
+  let echoues = 0;
+
+  for (const m of messages as Array<Record<string, unknown>>) {
+    if (m["state"] !== "Failed") continue;
+    echoues += 1;
+
+    for (const d of (m["recipients"] as Array<Record<string, unknown>>) ?? []) {
+      const e = d?.["error"];
+      if (typeof e === "string") causes.add(e);
+    }
+  }
+
+  if (echoues === 0) {
+    constats.push({
+      va: true,
+      quoi: "ENVOIS",
+      constat: `${messages.length} envoi(s) récent(s), aucun en échec.`,
+      quoiFaire: "",
+    });
+    return constats;
+  }
+
+  for (const cause of causes) {
+    constats.push(
+      traduire(cause) ?? {
+        va: false,
+        quoi: "ENVOIS",
+        constat: `La passerelle a refusé un envoi : ${cause.slice(0, 200)}`,
+        quoiFaire:
+          "Cette cause n'est pas encore traduite. Le message ci-dessus vient " +
+          "d'Android tel quel.",
+      },
+    );
+  }
+
+  return constats;
+}

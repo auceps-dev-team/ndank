@@ -6,6 +6,39 @@ le reste.
 
 ---
 
+## 0.20.0
+
+### Ajouté
+
+**`diagnostiquerAndroid`** — la passerelle interrogée, et ce qui ne va pas dit
+en français, avec les gestes.
+
+Le premier branchement d'un vrai téléphone a demandé quatre tentatives et une
+heure. Rien n'était compliqué : une permission Android qui se donne en trois
+gestes, dont un qu'on saute naturellement. Mais la passerelle répondait
+`Failed`, et rien ne disait quoi faire.
+
+Un marchand ivoirien ne lira pas la documentation d'Android en anglais pour
+comprendre `uid 10657 does not have SEND_SMS`. Il conclura que cela ne marche
+pas. Cent lignes remplacent l'heure qu'on a passée.
+
+Il traduit la permission, le téléphone endormi, le mauvais `mode`, les deux
+couples d'identifiants qu'on mélange, le mode avion, l'absence de réseau et la
+limite d'émission d'Android. Une cause inconnue est rendue telle quelle, **en
+disant qu'elle n'est pas traduite**.
+
+**Il n'envoie aucun SMS** : il lit les envois récents. Un diagnostic qui coûte
+un message ne se lance pas au démarrage, donc ne se lance jamais. Conséquence
+assumée et écrite : sur une passerelle qui n'a rien émis, il ne peut pas dire si
+la permission est accordée, et il le dit plutôt que de rassurer.
+
+`ndank/envoi/transporteurs/passerelle-android` devient un point d'entrée :
+`etatDuMessage` et le diagnostic sont faits pour l'hôte, pas pour le registre.
+
+Éprouvé contre la vraie passerelle dans quatre situations.
+
+---
+
 ## 0.19.3
 
 ### Éprouvé

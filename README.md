@@ -1477,6 +1477,48 @@ Il ne s'arrête pas tout seul autrement : mettez-le sous `systemd`, `pm2`, ou
 dans un conteneur qui redémarre. **Un agent arrêté ne produit aucune erreur** —
 il produit du silence, et c'est la file qui grossit que `bilan()` verra.
 
+### Le diagnostic, en français
+
+Le premier branchement d'un vrai téléphone a demandé quatre tentatives et une
+heure. Rien n'était compliqué — une permission Android qui se donne en trois
+gestes, dont un qu'on saute naturellement. Mais la passerelle répondait
+`Failed`, et rien ne disait quoi faire.
+
+Un marchand ivoirien ne lira pas la documentation d'Android en anglais pour
+comprendre `uid 10657 does not have SEND_SMS`. Il conclura que cela ne marche
+pas.
+
+```ts
+import { diagnostiquerAndroid } from "ndank/envoi/transporteurs/passerelle-android";
+
+for (const c of await diagnostiquerAndroid(config)) {
+  console.log(`${c.va ? "✓" : "✗"} ${c.constat}`);
+  if (c.quoiFaire) console.log(c.quoiFaire);
+}
+```
+
+```
+✓ La passerelle répond, et les identifiants passent.
+✗ Android n'autorise pas l'application à envoyer des SMS.
+    Trois gestes, dans cet ordre — le deuxième est celui qu'on saute :
+      1. Paramètres → Applications → SMSGate → menu ⋮ → « Autoriser les
+         paramètres restreints » ;
+      2. Autorisations → SMS → « Ne pas autoriser », puis « Autoriser » à
+         nouveau. L'octroi précédent datait d'avant la levée de restriction ;
+      3. Forcer l'arrêt de l'application, puis redémarrer le service.
+```
+
+**Il n'envoie aucun SMS.** Il lit ce que la passerelle garde des envois récents
+— un diagnostic qui coûte un message ne se lance pas au démarrage, donc ne se
+lance jamais. Conséquence assumée : sur une passerelle qui n'a rien émis, il ne
+peut pas dire si la permission est accordée, et **il le dit** plutôt que de
+rassurer à tort.
+
+Il traduit aussi le téléphone endormi, le mauvais `mode`, les deux couples
+d'identifiants qu'on mélange, le mode avion, l'absence de réseau et la limite
+d'émission d'Android. Une cause qu'il ne connaît pas est rendue telle quelle,
+en disant qu'elle n'est pas traduite.
+
 ### Le premier vrai SMS, et ce qu'il a coûté
 
 Le 7 septembre 2026, un Samsung A15 avec une SIM Orange ivoirienne, en mode

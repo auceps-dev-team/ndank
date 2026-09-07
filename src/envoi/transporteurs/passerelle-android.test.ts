@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { Http, Requete } from "../../http";
 import {
+  diagnostiquerAndroid,
   etatDuMessage,
   passerelleAndroid,
 } from "./passerelle-android";
@@ -282,5 +283,120 @@ describe("les deux API : le serveur et l'appareil", () => {
     await etatDuMessage({ ...CONFIG, mode: "appareil", http: f.http }, "zX");
 
     expect(f.vues[0]!.url).toBe("http://192.168.1.42:8080/message/zX");
+  });
+});
+
+describe("le diagnostic, en français", () => {
+  it("traduit la permission Android en trois gestes", async () => {
+    // C'est la panne qui a coûté une heure au premier branchement. Le message
+    // d'Android est en anglais et ne dit pas quoi faire ; celui-ci le dit.
+    const f = fausseHttp([
+      {
+        corps: [
+          {
+            state: "Failed",
+            recipients: [
+              {
+                error:
+                  "sendSMS: Sending SMS message: uid 10657 does not have android.permission.SEND_SMS.",
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    const constats = await diagnostiquerAndroid({ ...CONFIG, http: f.http });
+    const permission = constats.find((c) => c.quoi === "PERMISSION")!;
+
+    expect(permission.va).toBe(false);
+    expect(permission.constat).toBe(
+      "Android n'autorise pas l'application à envoyer des SMS.",
+    );
+    expect(permission.quoiFaire).toContain("paramètres restreints");
+    expect(permission.quoiFaire).toContain("Forcer l'arrêt");
+  });
+
+  it("nomme le mauvais mode plutôt que de rendre « 404 »", async () => {
+    const f = fausseHttp([{ statut: 404, corps: "" }]);
+
+    const [c] = await diagnostiquerAndroid({ ...CONFIG, http: f.http });
+
+    expect(c!.quoi).toBe("MODE");
+    expect(c!.quoiFaire).toContain('mode: "appareil"');
+  });
+
+  it("distingue les deux couples d'identifiants", async () => {
+    // L'application en affiche deux, un pour le local et un pour le nuage. Les
+    // mélanger est l'erreur la plus facile à commettre.
+    const f = fausseHttp([{ statut: 401, corps: "" }]);
+
+    const [c] = await diagnostiquerAndroid({ ...CONFIG, http: f.http });
+
+    expect(c!.quoi).toBe("IDENTIFIANTS");
+    expect(c!.quoiFaire).toContain("deux couples différents");
+  });
+
+  it("explique le téléphone qui dort, plutôt que « fetch failed »", async () => {
+    const http: Http = async () => {
+      throw new Error("ECONNREFUSED");
+    };
+
+    const [c] = await diagnostiquerAndroid({
+      ...CONFIG,
+      mode: "appareil",
+      http,
+    });
+
+    expect(c!.quoi).toBe("JOIGNABLE");
+    expect(c!.quoiFaire).toContain("Android coupe le Wi-Fi");
+  });
+
+  it("ne rassure pas quand rien n'a jamais été envoyé", async () => {
+    // La permission ne se voit qu'en essayant. Dire « tout va bien » sur une
+    // passerelle qui n'a rien émis serait un mensonge par omission.
+    const f = fausseHttp([{ corps: [] }]);
+
+    const constats = await diagnostiquerAndroid({ ...CONFIG, http: f.http });
+    const envois = constats.find((c) => c.quoi === "ENVOIS")!;
+
+    expect(envois.quoiFaire).toContain("cela ne se voit qu'en essayant");
+  });
+
+  it("se tait quand les envois récents sont tous passés", async () => {
+    const f = fausseHttp([{ corps: [{ state: "Delivered", recipients: [] }] }]);
+
+    const constats = await diagnostiquerAndroid({ ...CONFIG, http: f.http });
+
+    expect(constats.every((c) => c.va)).toBe(true);
+  });
+
+  it("rend la cause brute quand il ne sait pas la traduire", async () => {
+    // Mieux vaut un message d'Android en anglais que rien du tout — et le dire
+    // plutôt que de laisser croire à un diagnostic complet.
+    const f = fausseHttp([
+      { corps: [{ state: "Failed", recipients: [{ error: "quelque chose de neuf" }] }] },
+    ]);
+
+    const constats = await diagnostiquerAndroid({ ...CONFIG, http: f.http });
+    const inconnu = constats.find((c) => !c.va)!;
+
+    expect(inconnu.constat).toContain("quelque chose de neuf");
+    expect(inconnu.quoiFaire).toContain("pas encore traduite");
+  });
+
+  it("ne répète pas une cause partagée par dix destinataires", async () => {
+    const f = fausseHttp([
+      {
+        corps: [
+          { state: "Failed", recipients: [{ error: "RADIO_OFF" }] },
+          { state: "Failed", recipients: [{ error: "RADIO_OFF" }] },
+        ],
+      },
+    ]);
+
+    const constats = await diagnostiquerAndroid({ ...CONFIG, http: f.http });
+
+    expect(constats.filter((c) => c.quoi === "RESEAU")).toHaveLength(1);
   });
 });
