@@ -98,8 +98,23 @@ export interface ReglagesProjection {
   base: string;
   /** Le jeton du projet chez Ndank App. */
   jeton: string;
-  /** Le poivre des empreintes. **Le même partout**, sinon rien ne recolle. */
-  poivre: string;
+  /**
+   * Pas de poivre ici, et c'est délibéré.
+   *
+   * ═══════════════════════════════════════════════════════════════════════
+   * IL ÉTAIT EXIGÉ ET JAMAIS LU
+   *
+   * `ReglagesProjection` a porté un `poivre` obligatoire jusqu'à la 0.20.4.
+   * `pousser` ne l'a jamais lu : les empreintes sont calculées en amont, par
+   * `projectionDe`, et les lignes arrivent ici déjà scellées.
+   *
+   * Un champ secret qu'on exige sans s'en servir n'est pas seulement inutile.
+   * Il laisse croire que cette fonction hache quelque chose, donc qu'elle
+   * protège quelque chose — et il fait circuler un secret vers un endroit qui
+   * n'en a pas besoin.
+   *
+   * Le poivre appartient à `projectionDe`, et à lui seul.
+   */
   /** Le nom du service, tel que l'abonné le reconnaît. */
   site: string;
   http?: Http;
@@ -141,6 +156,22 @@ export interface Poussee {
  * n'ajoute pas. Pousser deux fois la même journée ne crée pas deux cartes, et
  * pousser après une panne rattrape sans qu'on ait à savoir où l'on s'était
  * arrêté.
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ * MAIS LA CLÉ DE STOCKAGE DOIT PORTER LE PROJET EN PLUS
+ *
+ * Ces trois champs identifient une carte **chez un marchand donné**. Ils ne
+ * suffisent pas à en faire une clé de table.
+ *
+ * `site` est une chaîne libre, choisie par le marchand. Deux marchands qui
+ * appellent le leur « Boutique » et qui numérotent leurs abonnements de la même
+ * façon écrasent mutuellement leurs lignes — et rien n'oblige à ce que ce soit
+ * un accident : il suffit de pousser un `site` et une `reference` qu'on
+ * devine.
+ *
+ * Le receveur doit donc stocker sur `(projet, empreinte, site, reference)`, le
+ * projet venant du **jeton** et non du corps. C'est la seule des quatre parts
+ * que l'émetteur ne choisit pas.
  */
 export async function pousser(
   lignes: readonly Projection[],

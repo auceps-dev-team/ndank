@@ -1158,6 +1158,17 @@ App, prise sans le poivre, ne livre pas un annuaire.
 marchands, et l'empreinte ne l'en dispense pas. Elle réduit l'exposition
 accidentelle, pas l'attaque décidée.
 
+### Une empreinte peut aussi porter une adresse, et cela a une suite
+
+`projectionDe` prend le téléphone **ou**, à défaut, le courriel. Un abonné
+qu'un hôte n'a inscrit que par adresse reste donc visible dans la vue
+multi-sites, au lieu de disparaître.
+
+C'est voulu, et cela crée une obligation en face : **une application qui ne sait
+connecter que par code SMS laissera ces abonnés devant une carte qu'ils ne
+peuvent pas atteindre.** Qui reçoit la projection doit donc soit accepter aussi
+la connexion par courriel, soit ne pas projeter les abonnés sans numéro.
+
 ### Les numéros doivent être en E.164, et Ndank refuse le reste
 
 `normaliserIdentifiant` lève sur un numéro qui ne commence pas par `+`.

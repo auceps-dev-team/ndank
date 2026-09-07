@@ -81,7 +81,6 @@ describe("pousser une projection", () => {
     const bilan = await pousser(lignes, {
       base: "https://app.ndank.test",
       jeton: "jeton",
-      poivre: POIVRE,
       site: "Baobart",
       http: f.http,
     });
@@ -103,7 +102,6 @@ describe("pousser une projection", () => {
     const bilan = await pousser(lignes, {
       base: "https://app.ndank.test",
       jeton: "jeton",
-      poivre: POIVRE,
       site: "Baobart",
       http: f.http,
     });
@@ -123,7 +121,6 @@ describe("pousser une projection", () => {
     await pousser([ligne()], {
       base: "https://app.ndank.test",
       jeton: "jeton",
-      poivre: POIVRE,
       site: "Baobart",
       http: f.http,
     });
@@ -143,7 +140,6 @@ describe("pousser une projection", () => {
     await pousser([ligne()], {
       base: "https://app.ndank.test",
       jeton: "jeton",
-      poivre: POIVRE,
       site: "Baobart",
       http: f.http,
     });
@@ -161,7 +157,6 @@ describe("pousser une projection", () => {
     await pousser([ligne()], {
       base: "https://app.ndank.test/",
       jeton: "jeton-de-projection",
-      poivre: POIVRE,
       site: "Baobart",
       http: f.http,
     });
@@ -177,7 +172,6 @@ describe("pousser une projection", () => {
     const bilan = await pousser([], {
       base: "https://app.ndank.test",
       jeton: "j",
-      poivre: POIVRE,
       site: "Baobart",
       http: f.http,
     });
@@ -342,5 +336,37 @@ describe("un numéro mal rangé", () => {
         maintenant,
       ),
     ).toThrow(/E\.164/);
+  });
+});
+
+describe("ce que `pousser` n'a pas à connaître", () => {
+  it("n'exige pas le poivre, parce qu'il ne s'en sert pas", async () => {
+    // Il l'a exigé jusqu'à la 0.20.4 sans jamais le lire : les empreintes sont
+    // calculées par `projectionDe`, et les lignes arrivent ici déjà scellées.
+    // Un secret qu'on exige sans s'en servir laisse croire que la fonction
+    // protège quelque chose, et le fait circuler pour rien.
+    const f = fausseHttp();
+
+    const bilan = await pousser([ligne()], {
+      base: "https://app.ndank.test",
+      jeton: "jeton",
+      site: "Baobart",
+      http: f.http,
+    });
+
+    expect(bilan.envoyees).toBe(1);
+  });
+
+  it("n'envoie aucun secret dans le corps", async () => {
+    const f = fausseHttp();
+
+    await pousser([ligne()], {
+      base: "https://app.ndank.test",
+      jeton: "jeton",
+      site: "Baobart",
+      http: f.http,
+    });
+
+    expect(f.requetes[0]!.corps).not.toContain(POIVRE);
   });
 });

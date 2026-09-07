@@ -6,6 +6,46 @@ le reste.
 
 ---
 
+## 0.20.4
+
+### Changement incompatible
+
+**`ReglagesProjection` n'a plus de `poivre`.** Il était **obligatoire et jamais
+lu** : `pousser` ne calcule aucune empreinte — elles arrivent déjà scellées par
+`projectionDe`.
+
+Un champ secret qu'on exige sans s'en servir n'est pas seulement inutile. Il
+laisse croire que la fonction hache quelque chose, donc qu'elle protège quelque
+chose, et il fait circuler un secret vers un endroit qui n'en a pas besoin.
+
+Trouvé par un audit du dépôt Ndank App, qui a comparé le contrat annoncé au code
+réel plutôt que de le croire sur parole.
+
+### Corrigé
+
+**La clé d'idempotence n'isolait pas les marchands.** `(empreinte, site,
+reference)` identifie une carte chez un marchand donné ; elle ne suffit pas à
+faire une clé de table.
+
+`site` est une chaîne libre, choisie par le marchand. Deux marchands qui
+appellent le leur « Boutique » et numérotent pareil s'écrasent — et rien
+n'oblige à ce que ce soit un accident. Le receveur doit stocker sur
+`(projet, empreinte, site, reference)`, **le projet venant du jeton** et non du
+corps : c'est la seule des quatre parts que l'émetteur ne choisit pas.
+
+### Documenté
+
+**Une empreinte peut porter une adresse.** `projectionDe` prend le téléphone ou,
+à défaut, le courriel — pour ne pas rendre invisible un abonné inscrit sans
+numéro. La suite n'était écrite nulle part : une application qui ne connecte que
+par code SMS laissera ces abonnés devant une carte qu'ils ne peuvent pas
+atteindre.
+
+**Le poivre entre dans `.env.example`**, avec les deux réglages de projection.
+Un hôte qui suivait la documentation n'avait aucun endroit où le mettre.
+
+---
+
 ## 0.20.3
 
 ### Éprouvé
