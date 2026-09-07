@@ -1477,6 +1477,71 @@ Il ne s'arrête pas tout seul autrement : mettez-le sous `systemd`, `pm2`, ou
 dans un conteneur qui redémarre. **Un agent arrêté ne produit aucune erreur** —
 il produit du silence, et c'est la file qui grossit que `bilan()` verra.
 
+### Le premier vrai SMS, et ce qu'il a coûté
+
+Le 7 septembre 2026, un Samsung A15 avec une SIM Orange ivoirienne, en mode
+local — donc sans qu'un octet ne transite par un tiers :
+
+```
+voie : local — rien ne transite par un tiers
+  +  0s  Pending
+  +  5s  Delivered   ← REMIS, confirmé par l'appareil du destinataire
+```
+
+Puis la chaîne entière, contre la même SIM :
+
+```
+1. le passage dépose  → 1 message en file
+2. l'agent long-poll  → il attend
+3. l'agent émet       → 1/1 parti(s)
+4. la file est vidée  → 0 restant(s)
+5. la santé           → MOTEUR    (rien à signaler)
+```
+
+`Delivered` en cinq secondes. C'est l'affirmation défendue depuis le début et
+qui n'était qu'une lecture de documentation : **l'appareil du destinataire a
+confirmé**. Resend et Twilio ne le donnent pas au moment de l'envoi.
+
+#### Quatre échecs avant, et chacun a trouvé quelque chose
+
+Il a fallu quatre tentatives. Aucun des trois défauts de code n'était visible
+aux 700 tests.
+
+**1. Le mode local est tombé en quatre-vingt-dix secondes.** Le premier
+`/health` a répondu en 1,5 s — déjà lent pour un réseau local — puis le
+téléphone a disparu. Android met le Wi-Fi en veille dès que l'écran s'éteint.
+C'est le « point de panne unique » décrit plus haut, observé en direct au
+premier essai.
+
+**2. On jetait la raison de l'échec.** `etatDuMessage` lisait `reason` à la
+racine ; la passerelle range la cause **dans chaque destinataire**. Le message
+rendait donc « Failed » sans un mot, alors que la passerelle disait exactement
+quoi faire. Corrigé en 0.19.1.
+
+**3. Le mode local visait le mauvais chemin.** Le serveur expose
+`/3rdparty/v1/messages`, l'appareil expose `/message`. Le mode qu'on recommande
+pour la confidentialité était donc **le seul à n'avoir jamais fonctionné**.
+Corrigé en 0.19.2, avec `mode: "serveur" | "appareil"`.
+
+**4. La permission Android.** Elle demande trois gestes, et sauter le deuxième
+laisse un système qui affiche « Autorisé » et refuse à l'exécution :
+
+- *Applications → SMSGate → menu ⋮ → **Autoriser les paramètres restreints*** —
+  une application installée hors magasin en a besoin ;
+- **retirer puis réaccorder** la permission SMS, parce que l'octroi précédent
+  datait d'avant la levée de restriction ;
+- **forcer l'arrêt**, puis redémarrer le service.
+
+#### Deux réglages à faire avant de compter dessus
+
+**« Gérer l'appli si inutilisée »** retire les permissions SMS et Téléphone
+après quelques mois sans ouverture — pour un service qu'on n'ouvre jamais,
+c'est une panne programmée et silencieuse. À désactiver.
+
+**L'optimisation de batterie** doit être levée pour l'application, sinon le mode
+local ne tient pas la nuit. À défaut, le mode nuage tient — au prix du transit
+par un tiers.
+
 ### Éprouver la chaîne sans SIM
 
 ```sh
@@ -1599,58 +1664,42 @@ schéma à un vrai PostgreSQL (Prisma 6.19.3, branche `Ndank-Baobart-Test`).
 
 Restent quatre paris, dont deux à moitié levés.
 
-- [ ] **Les quatre passerelles d'envoi.** Resend, Brevo, Twilio et Expo
-      étaient écrites d'après leur documentation, sans qu'aucune n'ait jamais
-      été appelée.
+- [ ] **Les passerelles d'envoi.** Cinq sont écrites ; **deux ont émis pour de
+      vrai**.
 
-      **Resend est levé, le 5 septembre 2026**, avec une vraie clé et un
-      domaine vérifié. Une relance complète — rédigée par `redigerCourriel`, pas
-      un « hello world » — part et rend son identifiant. Les trois chemins
-      d'échec se comportent aussi : clé invalide → 401, domaine non vérifié →
-      403 avec un message qui le nomme.
+      **Resend** — le 5 septembre 2026. Une relance complète, rédigée par
+      `redigerCourriel`, part et rend son identifiant ; clé invalide → 401,
+      domaine non vérifié → 403. Il reste qu'aucun courriel n'a atterri dans une
+      **vraie boîte** : les essais visaient les adresses de test de Resend.
 
-      **Une limite a été trouvée en même temps, et elle vaut d'être connue.**
-      Une adresse qui rebondit rend `parti: true` : Resend accepte le message,
-      et le rebond n'arrive que plus tard, par webhook. Un abonné dont
-      l'adresse est morte compte donc comme joignable, et l'échelle croit
-      l'avoir prévenu. Ndank ne peut pas le rattraper — le port `Envoi` rend un
-      booléen à l'envoi, pas un accusé différé. Un hôte qui veut la vérité
-      branche les webhooks de Resend.
+      **La passerelle Android** — le 7 septembre 2026, un Samsung A15 et une SIM
+      Orange. `Delivered` en cinq secondes, en mode local. Voir le récit
+      plus haut : quatre échecs et trois défauts de code avant d'y arriver.
 
-      **Brevo, Twilio et Expo restent ouverts.**
+      **Brevo, Twilio et Expo n'ont jamais été appelés.**
 
-- [ ] **La passerelle Android.** `passerelle-android` est écrite d'après la
-      documentation d'[android-sms-gateway](https://github.com/capcom6/android-sms-gateway),
-      **et n'a jamais appelé un téléphone**. C'est exactement la position où se
-      trouvait Flutterwave avant la 0.15.0 — où l'on a découvert que
-      l'adaptateur ne s'était jamais authentifié une seule fois.
+- [x] **La passerelle Android.** Écrite d'après la documentation, elle n'avait
+      jamais appelé un téléphone. Elle l'a fait le 7 septembre 2026, et l'essai
+      a trouvé deux défauts qu'aucun test ne pouvait voir : la raison d'un échec
+      qu'on jetait, et le mode local qui visait le mauvais chemin.
 
-      Pour la lever : installer l'application sur un téléphone Android, poser
-      une SIM, et envoyer une relance à un numéro qu'on tient. Puis relire
-      `etatDuMessage` et vérifier qu'il passe bien à `Delivered`.
+- [ ] **Flutterwave et MTN.** Flutterwave **demande une invitation** et **rend
+      un constat** : l'authentification, la charge en mobile money et
+      `verify_by_reference` sont éprouvés avec de vraies clés.
 
-- [ ] **Flutterwave et MTN.** Seul Paystack avait tourné en bac à sable — et
-      c'est lui qui a révélé les deux erreurs les plus coûteuses du dépôt.
+      **Mais rien n'a jamais bouclé.** Deux trous restent, et le second est le
+      plus sérieux du dépôt :
 
-      **Flutterwave est levé, le 5 septembre 2026**, avec de vraies clés de
-      test : l'invitation part, la référence revient, le constat retrouve la
-      charge. Il a fallu deux corrections pour y arriver, et la seconde
-      annulait la première.
+      — **le webhook n'a jamais été reçu.** `lireWebhook` vérifie une signature
+      `verif-hash` qu'aucun envoi réel n'a produite. Il faudrait une adresse
+      publique et un paiement mené à son terme ;
 
-      La 0.14.0 avait porté l'adaptateur sur la **v4** — la documentation la
-      plus récente, un échange OAuth, un flux en trois appels. Fidèle, et
-      inutilisable : le tableau de bord délivre des clés `FLWSECK_…`, et l'IDP
-      de la v4 les refuse. Mesuré, pas supposé :
+      — **aucun paiement n'a jamais avancé un cycle.** C'est le chemin complet
+      — paiement confirmé → `reconcilier` → `Versement` compté → échéance
+      repoussée — et il n'a tourné que contre des faux. C'est pourtant le seul
+      qui décide si un abonné garde son accès.
 
-      ```
-      v4  idp.flutterwave.com  → 401  invalid_client
-      v3  api.flutterwave.com  → 200
-      ```
-
-      On ne choisit donc pas l'API la plus moderne, mais celle qu'un compte
-      marchand peut réellement employer. La 0.15.0 est en v3.
-
-      **MTN reste ouvert.**
+      **MTN n'a jamais été appelé.**
 
 - [x] **Les unités de Flutterwave.** On supposait des unités **majeures**, sans
       l'avoir vérifié — la forme exacte de l'erreur de facteur 100 déjà

@@ -6,6 +6,36 @@ le reste.
 
 ---
 
+## 0.19.3
+
+### Éprouvé
+
+**Le premier vrai SMS est parti**, le 7 septembre 2026 : un Samsung A15, une SIM
+Orange ivoirienne, en mode local — donc sans qu'un octet ne transite par un
+tiers. `Delivered` en cinq secondes, confirmé par l'appareil du destinataire.
+
+Puis la chaîne entière contre la même SIM : le passage dépose, l'agent
+long-poll, il émet, la file se vide, la santé ne signale rien.
+
+Il a fallu **quatre tentatives**, et aucun des trois défauts n'était visible aux
+700 tests. Le récit est dans le README, parce que les trois pièges se
+reproduiront chez chaque marchand.
+
+### Précisé
+
+**Ni Resend ni Flutterwave ne sont complets**, et la liste le dit maintenant.
+
+Resend émet, mais aucun courriel n'a atterri dans une **vraie boîte** — les
+essais visaient ses adresses de test.
+
+Flutterwave demande et constate, mais **rien n'a jamais bouclé** : le webhook
+n'a jamais été reçu, et surtout **aucun paiement n'a jamais avancé un cycle**.
+Le chemin paiement confirmé → `reconcilier` → versement compté → échéance
+repoussée n'a tourné que contre des faux. C'est pourtant le seul qui décide si
+un abonné garde son accès, et c'est le trou le plus sérieux du dépôt.
+
+---
+
 ## 0.19.2
 
 ### Corrigé
