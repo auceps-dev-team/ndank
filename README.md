@@ -1226,7 +1226,18 @@ Cinq choses, et la quatrième est celle qu'on découvre trop tard.
    serveur au lieu d'être appelé — voir « La file » plus bas. Le NAT cesse
    alors d'être un problème, sans tiers et quel que soit votre hébergement.
 
-5. **La configuration**, puis `verifierEnvoi()` au démarrage — il nomme le
+5. **La permission Android d'envoyer des SMS.** Elle se donne à part, et
+   c'est le piège le plus courant : l'application est installée, le service
+   tourne, l'API répond `200` — et rien ne part. La passerelle le dit, à
+   condition d'aller lire la cause par destinataire :
+
+   ```
+   sendSMS: uid 10657 does not have android.permission.SEND_SMS.
+   ```
+
+   Rencontré au premier envoi réel, le 7 septembre 2026.
+
+6. **La configuration**, puis `verifierEnvoi()` au démarrage — il nomme le
    champ qui manque au lieu de laisser la passerelle répondre 401 le troisième
    jour :
 

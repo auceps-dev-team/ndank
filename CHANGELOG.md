@@ -6,6 +6,42 @@ le reste.
 
 ---
 
+## 0.19.1
+
+### Corrigé
+
+**La raison d'un échec n'était pas lue.** `etatDuMessage` cherchait `reason` à
+la racine ; la passerelle range la cause **dans chaque destinataire**, ce qui
+est logique — un message peut partir vers l'un et échouer vers l'autre — et ce
+qui est invisible tant qu'on n'a pas fait échouer un vrai envoi.
+
+Le premier essai réel a donc rendu « Failed » sans un mot, alors que la
+passerelle disait exactement ce qui n'allait pas :
+
+```
+sendSMS: uid 10657 does not have android.permission.SEND_SMS.
+```
+
+C'est-à-dire la panne la plus banale de cette passerelle : l'application est
+installée, le service tourne, l'API répond — et Android ne lui a jamais accordé
+le droit d'envoyer un SMS. Sans ce message, on cherche dans le code.
+
+Les causes sont dédoublonnées : dix destinataires refusés pour la même raison
+donnent une ligne, pas dix.
+
+### Constaté au premier essai réel
+
+**Le mode local a tenu quatre-vingt-dix secondes.** Le premier `/health` a
+répondu en 1,5 s — déjà lent pour un réseau local — puis le téléphone a disparu :
+Android met le Wi-Fi en veille dès que l'écran s'éteint. C'est exactement le
+« point de panne unique » que le README décrit, observé en direct.
+
+Le mode nuage, lui, tient : c'est le téléphone qui maintient la connexion
+sortante. Le compromis reste celui qui est écrit — le contenu transite par un
+tiers.
+
+---
+
 ## 0.19.0
 
 ### Ajouté

@@ -187,3 +187,64 @@ describe("relire l'état d'un message", () => {
     expect(etat.remis).toBe(false);
   });
 });
+
+describe("la raison d'un échec, là où la passerelle la range vraiment", () => {
+  it("la lit dans le destinataire, et non à la racine", async () => {
+    // Trouvé au premier envoi réel : on lisait `reason` à la racine, il n'y en
+    // a pas. La passerelle range la cause par destinataire — et sans elle,
+    // « Failed » ne dit rien et l'on cherche dans le code.
+    const f = fausseHttp([
+      {
+        corps: {
+          id: "I0ecYx",
+          state: "Failed",
+          recipients: [
+            {
+              phoneNumber: "+2250718350482",
+              state: "Failed",
+              error:
+                "sendSMS: Sending SMS message: uid 10657 does not have android.permission.SEND_SMS.",
+            },
+          ],
+        },
+      },
+    ]);
+
+    const etat = await etatDuMessage({ ...CONFIG, http: f.http }, "I0ecYx");
+
+    expect(etat.remis).toBe(false);
+    expect(etat.raison).toContain("android.permission.SEND_SMS");
+  });
+
+  it("ne répète pas dix fois la même cause", async () => {
+    const f = fausseHttp([
+      {
+        corps: {
+          id: "x",
+          state: "Failed",
+          recipients: [
+            { error: "pas de réseau" },
+            { error: "pas de réseau" },
+            { error: "numéro invalide" },
+          ],
+        },
+      },
+    ]);
+
+    expect((await etatDuMessage({ ...CONFIG, http: f.http }, "x")).raison).toBe(
+      "pas de réseau ; numéro invalide",
+    );
+  });
+
+  it("garde `reason` à la racine si la passerelle en met un un jour", async () => {
+    const f = fausseHttp([{ corps: { id: "x", state: "Failed", reason: "expiré" } }]);
+
+    expect((await etatDuMessage({ ...CONFIG, http: f.http }, "x")).raison).toBe("expiré");
+  });
+
+  it("rend `null` quand il n'y a vraiment rien à dire", async () => {
+    const f = fausseHttp([{ corps: { id: "x", state: "Sent", recipients: [{}] } }]);
+
+    expect((await etatDuMessage({ ...CONFIG, http: f.http }, "x")).raison).toBeNull();
+  });
+});

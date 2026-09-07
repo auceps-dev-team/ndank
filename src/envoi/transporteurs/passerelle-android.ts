@@ -224,7 +224,43 @@ export async function etatDuMessage(
   return {
     id: chaine(reponse["id"]) ?? id,
     etat,
-    raison: chaine(reponse["reason"]),
+    raison: raisonDe(reponse),
     remis: etat === "Delivered",
   };
+}
+
+/**
+ * Pourquoi cela a échoué — et il faut aller la chercher par destinataire.
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ * ELLE N'EST PAS OÙ ON L'ATTEND, ET ON LA JETAIT
+ *
+ * Jusqu'à la 0.19.1, on lisait `reason` à la racine. Il n'y en a pas. La
+ * passerelle range la cause **dans chaque destinataire**, ce qui est logique —
+ * un message peut partir vers l'un et échouer vers l'autre — et ce qui est
+ * invisible tant qu'on n'a pas fait échouer un vrai envoi.
+ *
+ * Le premier essai réel a donc rendu « Failed » sans un mot, alors que la
+ * passerelle disait exactement ce qui n'allait pas :
+ *
+ *     "sendSMS: uid 10657 does not have android.permission.SEND_SMS."
+ *
+ * C'est-à-dire la panne la plus banale de cette passerelle : l'application est
+ * installée, le service tourne, l'API répond — et Android ne lui a jamais
+ * accordé le droit d'envoyer un SMS. Sans ce message, on cherche dans le code.
+ */
+function raisonDe(reponse: Record<string, unknown>): string | null {
+  const directe = chaine(reponse["reason"]);
+  if (directe !== null) return directe;
+
+  const destinataires = reponse["recipients"];
+  if (!Array.isArray(destinataires)) return null;
+
+  const causes = destinataires
+    .map((d) => chaine((d as Record<string, unknown>)?.["error"]))
+    .filter((c): c is string => c !== null);
+
+  // Dédoublonnées : dix destinataires refusés pour la même raison donnent une
+  // ligne, pas dix.
+  return causes.length === 0 ? null : [...new Set(causes)].join(" ; ");
 }
