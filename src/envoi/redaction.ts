@@ -153,11 +153,29 @@ export function redigerCourriel(message: Message): Courriel {
   const coupe = message.joursRestants < 0;
   const quand = delai(message.joursRestants);
 
+  /**
+   * Le sujet porte le délai, et ce n'est pas une coquetterie.
+   *
+   * ═══════════════════════════════════════════════════════════════════════
+   * DEUX RAPPELS QUI PORTENT LE MÊME SUJET SE RESSEMBLENT À UN DOUBLON
+   *
+   * Jusqu'à la 0.20.2, tous les paliers intermédiaires s'appelaient « Votre
+   * abonnement X est à renouveler ». Une échelle à trois barreaux envoyait
+   * donc deux ou trois fois le même sujet.
+   *
+   * Constaté dans une vraie boîte Gmail : les messages se regroupent en fil,
+   * et l'abonné ne peut pas distinguer « dans sept jours » de « demain » sans
+   * ouvrir. Celui qui a déjà vu le premier ne rouvre pas le second — c'est-à-
+   * dire qu'il rate celui qui pressait.
+   *
+   * Le délai est la seule chose qui change d'un palier à l'autre. C'est donc
+   * lui qui doit être dans le sujet.
+   */
   const sujet = coupe
-    ? `Votre accès à ${message.offre} est suspendu`
+    ? `${message.offre} : accès suspendu ${quand}`
     : message.dernier
-      ? `Dernier rappel : votre accès à ${message.offre} s'arrête ${quand}`
-      : `Votre abonnement ${message.offre} est à renouveler`;
+      ? `Dernier rappel : ${message.offre} s'arrête ${quand}`
+      : `${message.offre} : à renouveler ${quand}`;
 
   // « Bonjour, » et non « Bonjour Pass Créateur, » : quand on ignore le nom, on
   // ne le remplace par rien. Voir `Message.destinataire`.

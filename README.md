@@ -382,6 +382,32 @@ Il **rédige vraiment** — c'est tout l'intérêt. Un faux qui se contenterait 
 compter ne dirait rien du contenu, et c'est le contenu qui surprend : un libellé
 d'offre un peu long fait déborder le SMS, et on préfère le découvrir là.
 
+### Le courriel qui tombe en spam n'est pas un problème de Ndank
+
+Le premier envoi vers une vraie boîte Gmail a atterri dans les indésirables. Le
+diagnostic est du côté du **domaine**, pas de la bibliothèque :
+
+```
+SPF     sur le sous-domaine        — absent
+DMARC   sur le sous-domaine        — absent (hérité en p=none)
+DKIM    (Resend)                   — présent
+```
+
+Depuis février 2024, Gmail attend SPF **et** DKIM **et** DMARC. Un seul des
+trois suffit à faire basculer, surtout sur un domaine neuf, sans réputation, qui
+envoie un message court avec un lien et le mot « suspendu ».
+
+**Ce qui relève de l'hôte** : poser les enregistrements DNS que Resend affiche
+dans son écran de domaine, et laisser passer quelques jours d'envois réguliers.
+Aucune ligne de code n'y peut rien.
+
+**Ce qui relève de Ndank** : que le message soit bon quand il arrive. C'est le
+seul levier de ce côté-ci, et il vaut la peine — voir le sujet, ci-dessous.
+
+**Et un rappel qui va en spam est pire qu'un envoi raté** : Ndank le compte
+`parti: true`, l'échelle avance, et l'abonné ne voit rien. C'est la même
+famille que le rebond de Resend et que le `Pending` de la passerelle Android.
+
 ### Ce que la rédaction garantit
 
 **Le lien ne se coupe jamais.** Un SMS trop long coûte un segment de plus ; un

@@ -6,6 +6,45 @@ le reste.
 
 ---
 
+## 0.20.2
+
+### Corrigé
+
+**Deux rappels ne portent plus le même sujet.** Tous les paliers intermédiaires
+s'appelaient « Votre abonnement X est à renouveler » : une échelle à trois
+barreaux envoyait donc deux ou trois fois le même sujet.
+
+Constaté dans une vraie boîte Gmail, en envoyant les trois paliers d'affilée.
+Les messages se regroupent en fil et ressemblent à un doublon — et l'abonné qui
+a déjà vu le premier ne rouvre pas le second, c'est-à-dire qu'il rate celui qui
+pressait.
+
+Le délai est la seule chose qui change d'un palier à l'autre. C'est donc lui qui
+est dans le sujet, et l'offre passe en tête parce qu'un abonné a plusieurs
+abonnements :
+
+```
+Pass Créateur : à renouveler dans 7 jours
+Pass Créateur : à renouveler demain
+Dernier rappel : Pass Créateur s'arrête aujourd'hui
+Pass Créateur : accès suspendu depuis hier
+```
+
+Aucun test ne couvrait le sujet — cinq le font désormais, dont un qui vérifie
+qu'aucun palier n'en partage un avec un autre.
+
+### Documenté
+
+**Le courriel qui tombe en spam n'est pas un problème de Ndank.** Le même essai
+a atterri dans les indésirables, et le diagnostic est dans le DNS du domaine :
+SPF absent, DMARC absent, DKIM seul présent. Gmail en attend trois depuis
+février 2024.
+
+Ce que la bibliothèque peut, c'est que le message soit bon quand il arrive. Le
+reste appartient à l'hôte, et le README le dit plutôt que de laisser chercher.
+
+---
+
 ## 0.20.1
 
 ### Éprouvé

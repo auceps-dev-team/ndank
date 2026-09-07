@@ -226,3 +226,59 @@ describe("le délai", () => {
     expect(delai(0, true)).toBe("aujourd'hui");
   });
 });
+
+describe("le sujet distingue les paliers", () => {
+  const message = (joursRestants: number, dernier = false) => ({
+    cle: `2026-09-14:${joursRestants}`,
+    destinataire: "Awa",
+    offre: "Pass Créateur",
+    montant: "2 000 XOF",
+    lien: "https://p.ci/v/abc",
+    joursRestants,
+    dernier,
+  });
+
+  it("ne répète jamais le même sujet d'un palier à l'autre", async () => {
+    // Constaté dans une vraie boîte Gmail : deux rappels au même sujet se
+    // regroupent en fil et ressemblent à un doublon. Celui qui a vu le premier
+    // ne rouvre pas le second — c'est-à-dire qu'il rate celui qui pressait.
+    const sujets = [
+      redigerCourriel(message(7)).sujet,
+      redigerCourriel(message(3)).sujet,
+      redigerCourriel(message(1)).sujet,
+      redigerCourriel(message(0, true)).sujet,
+      redigerCourriel(message(-1)).sujet,
+    ];
+
+    expect(new Set(sujets).size).toBe(sujets.length);
+  });
+
+  it("porte le délai, qui est la seule chose qui change", () => {
+    expect(redigerCourriel(message(7)).sujet).toBe(
+      "Pass Créateur : à renouveler dans 7 jours",
+    );
+    expect(redigerCourriel(message(1)).sujet).toBe(
+      "Pass Créateur : à renouveler demain",
+    );
+  });
+
+  it("nomme l'offre en premier, parce que c'est ce qu'on cherche dans une liste", () => {
+    // Un abonné a plusieurs abonnements. « Votre abonnement est à renouveler »
+    // ne lui dit pas lequel sans qu'il ouvre.
+    for (const j of [7, 1, -1]) {
+      expect(redigerCourriel(message(j)).sujet.startsWith("Pass Créateur")).toBe(true);
+    }
+  });
+
+  it("garde « Dernier rappel » en tête, parce que c'est l'urgence qui prime", () => {
+    expect(redigerCourriel(message(0, true)).sujet).toBe(
+      "Dernier rappel : Pass Créateur s'arrête aujourd'hui",
+    );
+  });
+
+  it("dit la suspension au passé, une fois l'accès coupé", () => {
+    expect(redigerCourriel(message(-1)).sujet).toBe(
+      "Pass Créateur : accès suspendu depuis hier",
+    );
+  });
+});
