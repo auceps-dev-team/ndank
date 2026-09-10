@@ -186,8 +186,39 @@ export interface Encaissement {
   /** Temps 2 : faire apparaître l'écran de validation chez l'abonné. */
   inviter(demande: Demande): Promise<Invitation>;
 
-  /** Temps 5 : relire l'issue auprès du fournisseur, avant de donner la valeur. */
-  constater(reference: string): Promise<Issue>;
+  /**
+   * Temps 5 : relire l'issue auprès du fournisseur, avant de donner la valeur.
+   *
+   * ══════════════════════════════════════════════════════════════════════════
+   * POURQUOI UN SECOND PARAMÈTRE, ET POURQUOI IL EST FACULTATIF
+   *
+   * Ce port a longtemps tenu pour acquis qu'une référence fabriquée par
+   * l'appelant suffisait à retrouver un paiement. C'est vrai de Flutterwave
+   * (`tx_ref`), de Paystack (`reference`), de MTN (`X-Reference-Id`).
+   *
+   * Ce n'est pas universel. Mesuré chez lomi. le 10 septembre 2026 :
+   *
+   *     GET /payment-requests/20261010-1-testndank6365  → 404 not found
+   *     GET /payment-requests/c599f357-19e7-…           → 200
+   *
+   * et leur liste de transactions ne filtre ni par référence ni par
+   * métadonnée. Certains fournisseurs ne savent chercher que par **leur**
+   * identifiant. `identifiantFournisseur` — celui que `Invitation` ou un
+   * webhook a rapporté — leur donne ce qu'il leur faut.
+   *
+   * Il reste facultatif, et délibérément. L'abonné qui revient d'une page de
+   * paiement ne rapporte que `?ref=` : le routeur n'a rien d'autre en main, et
+   * le rendre obligatoire l'obligerait à inventer une valeur qu'il n'a pas. Un
+   * adaptateur qui en a besoin doit donc se débrouiller sans — quitte à
+   * chercher plus lentement — et le dire dans son propre commentaire.
+   *
+   * Les adaptateurs qui l'ignorent n'ont rien à changer : une fonction à un
+   * seul paramètre satisfait cette signature.
+   */
+  constater(
+    reference: string,
+    identifiantFournisseur?: string | null,
+  ): Promise<Issue>;
 
   /**
    * Lire un webhook et le normaliser.

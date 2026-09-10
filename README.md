@@ -469,9 +469,9 @@ const encaissement = fournisseur("flutterwave", {
 });
 ```
 
-Trois adaptateurs sont branchés — **Flutterwave**, **Paystack** et **MTN MoMo**.
-Quatre autres ont leurs bases posées : **Orange**, **Wave**, **Moov** et
-**Djamo**. Ils déclarent déjà les champs qu'ils attendront, pour qu'un hôte
+Quatre adaptateurs sont branchés — **Flutterwave**, **Paystack**, **MTN MoMo**
+et **lomi.** Quatre autres ont leurs bases posées : **Orange**, **Wave**,
+**Moov** et **Djamo**. Ils déclarent déjà les champs qu'ils attendront, pour qu'un hôte
 puisse ouvrir ses comptes marchands avant que l'adaptateur n'existe — c'est la
 partie longue. En attendant, ils lèvent un message qui dit quoi faire.
 
@@ -499,6 +499,14 @@ arrive quand il arrive. Restent le deuxième et le cinquième — `inviter` et
 
 La clé de cycle sert de référence, donc de clé d'idempotence : rejouer un
 passage ne crée pas une seconde demande de paiement.
+
+**Sauf chez lomi., et c'est la mesure qui l'a montré.** Leur route de création
+de lien exige une `Idempotency-Key` — sans elle, un `400` net — mais ne
+l'honore pas : trois appels avec la même clé et le même corps ont rendu trois
+liens distincts. La même en-tête fonctionne pourtant sur leur route de demande
+de paiement. L'adaptateur répare donc à leur place : il cherche un lien portant
+déjà la référence avant d'en créer un. C'est le genre de chose qu'aucune
+documentation n'avoue et qu'aucun test contre un faux ne trouve.
 
 ## Payer en plusieurs fois
 

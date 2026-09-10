@@ -75,6 +75,7 @@ function modules(dossier = join(racine, "src"), prefixe = ""): string[] {
 const INTERNES = new Set([
   "encaissement/fournisseurs/directs.ts",
   "encaissement/fournisseurs/flutterwave.ts",
+  "encaissement/fournisseurs/lomi.ts",
   "encaissement/fournisseurs/mtn.ts",
   "encaissement/fournisseurs/paystack.ts",
   "encaissement/signature.ts",

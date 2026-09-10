@@ -1,5 +1,6 @@
 import type { Encaissement, Http } from "./port";
 import { CHAMPS_FLUTTERWAVE, flutterwave } from "./fournisseurs/flutterwave";
+import { CHAMPS_LOMI, lomi } from "./fournisseurs/lomi";
 import { CHAMPS_MTN, mtn } from "./fournisseurs/mtn";
 import { CHAMPS_PAYSTACK, paystack } from "./fournisseurs/paystack";
 import { PAR_NOM, fondation } from "./fournisseurs/directs";
@@ -42,6 +43,7 @@ import { PAR_NOM, fondation } from "./fournisseurs/directs";
 export type NomFournisseur =
   | "flutterwave"
   | "paystack"
+  | "lomi"
   | "mtn"
   | "orange"
   | "wave"
@@ -55,6 +57,7 @@ export type Identifiants = Readonly<Record<string, string | boolean | undefined>
 export const CHAMPS_REQUIS: Readonly<Record<NomFournisseur, readonly string[]>> = {
   flutterwave: CHAMPS_FLUTTERWAVE,
   paystack: CHAMPS_PAYSTACK,
+  lomi: CHAMPS_LOMI,
   mtn: CHAMPS_MTN,
   orange: PAR_NOM["orange"]!.champs,
   wave: PAR_NOM["wave"]!.champs,
@@ -141,6 +144,18 @@ export function fournisseur(
         http,
       });
 
+    case "lomi":
+      return lomi({
+        cleSecrete: s("cleSecrete"),
+        secretWebhook: s("secretWebhook"),
+        joursDeValidite:
+          typeof identifiants["joursDeValidite"] === "string"
+            ? Number.parseInt(identifiants["joursDeValidite"], 10)
+            : undefined,
+        production: identifiants["production"] === true,
+        http,
+      });
+
     case "mtn":
       return mtn({
         utilisateurApi: s("utilisateurApi"),
@@ -172,7 +187,7 @@ export function catalogue(): {
   champs: readonly string[];
   devises: readonly string[];
 }[] {
-  const branches = new Set<NomFournisseur>(["flutterwave", "paystack", "mtn"]);
+  const branches = new Set<NomFournisseur>(["flutterwave", "paystack", "lomi", "mtn"]);
 
   return (Object.keys(CHAMPS_REQUIS) as NomFournisseur[]).map((nom) => ({
     nom,

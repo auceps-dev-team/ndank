@@ -6,6 +6,78 @@ le reste.
 
 ---
 
+## 0.21.0
+
+### Ajouté
+
+**Un quatrième adaptateur : lomi.** Un PSP ouest-africain qui agrège Wave, MTN,
+Orange Money, Djamo, les cartes — et **π-SPI**, l'infrastructure de paiement
+instantané de la BCEAO, dont c'est aujourd'hui la seule porte d'entrée
+accessible : le bac à sable de la BCEAO n'ouvre même pas de connexion.
+
+C'est **le premier adaptateur écrit après avoir appelé l'API**, et non d'après
+une documentation. Les trois autres ont été corrigés par la réalité — Flutterwave
+a coûté trois versions, Paystack un facteur cent sur les montants. Celui-ci a été
+écrit après un relevé complet, consigné dans `docs/lomi.md`.
+
+### Changé
+
+**`constater` reçoit un second paramètre, facultatif.**
+
+```ts
+constater(reference: string, identifiantFournisseur?: string | null)
+```
+
+Le port tenait pour acquis qu'une référence fabriquée par l'appelant suffisait à
+retrouver un paiement. C'est vrai de Flutterwave, de Paystack, de MTN. **Ce n'est
+pas universel.** lomi. ne retrouve un objet que par le sien, et sa liste de
+transactions ne filtre ni par référence ni par métadonnée.
+
+Facultatif, parce que l'abonné qui revient d'une page de paiement ne rapporte que
+`?ref=` : le rendre obligatoire forcerait le routeur à inventer une valeur qu'il
+n'a pas. Les trois autres adaptateurs n'ont pas eu à changer — une fonction à un
+seul paramètre satisfait cette signature.
+
+### Ce que la mesure a démenti
+
+**Une clé d'idempotence exigée et pas honorée.** `POST /payment-links` refuse en
+`400` sans en-tête `Idempotency-Key` — et trois appels avec la même clé et le
+même corps ont rendu **trois liens distincts**. La même en-tête fonctionne
+pourtant sur leur route de demande de paiement.
+
+Le README annonçait cette protection comme acquise pour tous. L'adaptateur répare
+donc à leur place : il cherche un lien portant déjà la référence avant d'en créer
+un. Aucun test contre un faux n'aurait trouvé cela.
+
+**Une session de tunnel meurt en soixante minutes.** Ce n'était pas un arbitrage
+mais une disqualification : une relance Ndank part par SMS et se lit le lendemain
+matin. L'adaptateur crée donc un lien durable — 45 jours par défaut, ce qui
+couvre la grâce et la reprise. Le défaut de lomi. est d'un jour.
+
+**Le nom d'hôte « sandbox » n'isole rien.** Un objet créé contre
+`sandbox.api.lomi.africa` est ressorti visible sur l'hôte de production, avec le
+même identifiant. C'est la **clé** qui décide de l'environnement — et une clé
+`lomi_pk_` sans segment `test_` ni `live_`, format que leur documentation ne
+décrit pas mais que leur portail délivre, écrit en production sans le dire.
+
+D'où le second refus de démarrage du dépôt, après celui de Flutterwave et pour la
+même raison : rien dans l'URL ne distingue un essai d'un débit réel.
+
+### Ce qui reste hors de portée
+
+**Le paiement lui-même.** Aucun canal n'est raccordé au compte marchand —
+« *Wave provider not configured for this organization* » — et sur 132 routes
+documentées, **aucune ne permet d'y remédier**. C'est lomi. qui raccorde, après
+identification du marchand.
+
+**Le webhook.** Sa signature est un vrai HMAC-SHA256 du corps brut, ce que le
+`verif-hash` de Flutterwave n'est pas. Mais le secret `whsec_` n'est pas exposé
+par l'API : il se recopie du tableau de bord.
+
+Douze vérifications contre la vraie API, zéro échec, une hors de portée.
+
+---
+
 ## 0.20.5
 
 ### Éprouvé
