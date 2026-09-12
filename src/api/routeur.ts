@@ -173,7 +173,14 @@ function versJson(
   const etat = etatDe(
     {
       cycle: {
-        debut: ligne.echeance,
+        // `ligne.debut`, et non `ligne.echeance`.
+        //
+        // Cette ligne a porté l'échéance jusqu'à la 0.21.0, et c'était sans
+        // conséquence : `etatDe` ne lit jamais `cycle.debut`. Un défaut qui ne
+        // se voit pas est un défaut qui attend — le jour où l'état dépendra du
+        // début de cycle, il aurait rendu un état faux, silencieusement, et
+        // sur tous les abonnements à la fois.
+        debut: ligne.debut,
         echeance: ligne.echeance,
         accesJusquA: ligne.accesJusquA,
         repriseJusquA: ligne.repriseJusquA,
@@ -191,6 +198,14 @@ function versJson(
     montant: ligne.montant,
     devise: ligne.devise,
     cadence: ligne.cadence,
+    // `debut` voyage, et il le doit.
+    //
+    // `LigneTableau` le porte, chaque hôte le remplit, et le routeur le jetait
+    // ici — alors que son commentaire de port dit « l'abonné y lit son
+    // calendrier ». Sans lui, aucun écran ne peut dire depuis quand le cycle
+    // court, et l'abonné qui veut savoir ce qu'il a payé n'a que la date de
+    // fin. Relevé par l'écriture de Ndank App, qui en avait besoin.
+    debut: ligne.debut.toISOString(),
     // L'état est calculé ici, à l'instant de la réponse — jamais lu d'une
     // colonne. C'est la même règle que partout : la base garde les faits, pas
     // les conclusions.

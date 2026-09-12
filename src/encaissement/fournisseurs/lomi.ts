@@ -335,12 +335,29 @@ export function lomi(config: ConfigLomi): Encaissement {
      *   /checkout-sessions  URL, idempotente, **60 minutes**
      *   /payment-links      URL, durée choisie, **pas idempotente**
      *
-     * La session de soixante minutes est disqualifiée d'office. Une relance
-     * Ndank part par SMS et se lit le lendemain matin ; l'abonné qui ouvre le
-     * lien à huit heures trouverait une page morte. La session est faite pour
-     * un tunnel d'achat ouvert dans l'instant, pas pour une échéance.
+     * La session de soixante minutes est disqualifiée, mais **pas pour la
+     * raison qu'on croit** — et ce paragraphe a dit le contraire jusqu'à la
+     * 0.21.1.
      *
-     * On prend donc le lien durable, et on répare l'idempotence nous-mêmes.
+     * Il affirmait qu'une relance part par SMS et se lit le lendemain matin,
+     * donc que la session serait morte à l'ouverture. C'est faux : le SMS
+     * porte le lien signé de **Ndank**, valable quinze jours, et `inviter`
+     * n'est appelé qu'au moment où l'abonné ouvre cette page. La session
+     * naîtrait donc fraîche, à la seconde où il en a besoin.
+     *
+     * Le vrai motif est ailleurs, et il est plus solide. Dans le flux de
+     * relance, `referenceDeVersement` est **stable sur tout le cycle** — c'est
+     * délibéré, c'est ce qui empêche de compter deux fois un versement.
+     * L'abonné qui abandonne à neuf heures et revient à midi présente donc la
+     * même référence. Avec une session courte honorée par idempotence, le
+     * fournisseur lui rendrait **la session expirée**, et le second essai
+     * n'aurait jamais lieu.
+     *
+     * (Le flux de souscription n'a pas ce problème : sa référence porte la
+     * minute, précisément pour qu'un nouvel essai soit une nouvelle demande.)
+     *
+     * Un lien durable couvre toute la fenêtre que la référence couvre. On le
+     * prend, et on répare l'idempotence nous-mêmes.
      */
     async inviter(demande: Demande): Promise<Invitation> {
       const dejaLa = await lienExistant(demande.reference);

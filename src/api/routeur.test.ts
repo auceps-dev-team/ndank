@@ -177,7 +177,7 @@ describe("la traduction d'un état en dates", () => {
         etatDe(
           {
             cycle: {
-              debut: l.echeance,
+              debut: l.debut,
               echeance: l.echeance,
               accesJusquA: l.accesJusquA,
               repriseJusquA: l.repriseJusquA,
@@ -240,6 +240,32 @@ describe("la liste", () => {
 
     expect(lignes[0]!["etat"]).toBe("SUSPENDUE");
     expect(lignes[0]!["joursRestants"]).toBeLessThan(0);
+  });
+
+  /**
+   * Relevé par l'écriture de Ndank App, qui en avait besoin pour afficher un
+   * calendrier et ne l'a pas trouvé.
+   *
+   * `LigneTableau.debut` existe depuis toujours, chaque hôte le remplit, et le
+   * routeur le jetait au dernier moment. Le champ traversait donc la base, le
+   * port et l'implémentation pour mourir à la frontière — alors que son propre
+   * commentaire annonce « l'abonné y lit son calendrier ».
+   *
+   * C'est le genre d'oubli qu'aucun test ne trouve tant qu'il n'y a personne en
+   * face : on ne remarque pas l'absence d'un champ qu'on n'a jamais demandé.
+   */
+  it("envoie depuis quand le cycle court, et pas seulement quand il finit", async () => {
+    const cycle = deCycle(ajouterJours(MAINTENANT, -40));
+    const f = fauxTableau([ligne({ ...cycle })]);
+    const api = routeurApi({ tableau: f.tableau, jeton: JETON });
+
+    const corps = lire((await api(get("/abonnements"))).corps);
+    const lignes = corps["lignes"] as Record<string, unknown>[];
+
+    expect(lignes[0]!["debut"]).toBe(cycle.debut.toISOString());
+    // Et il ne se confond pas avec l'échéance, qui était la valeur envoyée
+    // par erreur à `etatDe` jusqu'à la 0.21.0.
+    expect(lignes[0]!["debut"]).not.toBe(lignes[0]!["echeance"]);
   });
 
   it("rend les plus urgents d'abord", async () => {
@@ -313,10 +339,14 @@ describe("un abonnement", () => {
 /** Un cycle dont le paiement est tombé à cette date. */
 function deCycle(paiement: Date): Pick<
   LigneTableau,
-  "echeance" | "accesJusquA" | "repriseJusquA"
+  "debut" | "echeance" | "accesJusquA" | "repriseJusquA"
 > {
   const c = cycleApresPaiement(jour(paiement), "MENSUEL");
   return {
+    // `debut` était omis ici, et l'assistant reproduisait donc l'oubli même
+    // qu'on corrige dans `versJson` : un champ que `cycleApresPaiement`
+    // calcule, que personne ne recopie, et que personne ne remarque absent.
+    debut: c.debut,
     echeance: c.echeance,
     accesJusquA: c.accesJusquA,
     repriseJusquA: c.repriseJusquA,

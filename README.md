@@ -367,6 +367,20 @@ chiffre n'a aucune raison d'alerter quelqu'un un mardi matin. La panne se
 manifeste au troisième jour, quand l'accès tombe pour un abonné qui n'a rien
 reçu, et qui n'a aucun moyen de savoir ce qui s'est passé.
 
+**Mais cette vérification regarde si la clé est là, pas si elle marche.** Elle
+ne fait aucun appel réseau — au démarrage, personne ne veut attendre trois
+passerelles. Deux pannes lui échappent donc entièrement, et ce sont les deux
+qu'on a rencontrées :
+
+- une clé Brevo **bloquée par filtrage d'IP** est présente, bien formée, et
+  refusée à chaque envoi (voir plus bas) ;
+- un domaine **sans SPF ni DKIM** envoie parfaitement, et atterrit en spam.
+
+Les deux produisent la même chose qu'une clé absente : un `injoignable` de plus
+dans le bilan, et un abonné qui n'a rien reçu. **La seule parade est d'envoyer
+pour de vrai avant la mise en service** — c'est à cela que sert
+`npm run bac-a-sable-courriel`.
+
 ### Un passage à blanc avant le premier vrai
 
 ```ts
@@ -397,9 +411,50 @@ Depuis février 2024, Gmail attend SPF **et** DKIM **et** DMARC. Un seul des
 trois suffit à faire basculer, surtout sur un domaine neuf, sans réputation, qui
 envoie un message court avec un lien et le mot « suspendu ».
 
-**Ce qui relève de l'hôte** : poser les enregistrements DNS que Resend affiche
-dans son écran de domaine, et laisser passer quelques jours d'envois réguliers.
-Aucune ligne de code n'y peut rien.
+**Ce qui relève de l'hôte** : poser trois enregistrements DNS, et laisser passer
+quelques jours d'envois réguliers. Aucune ligne de code n'y peut rien.
+
+#### Les trois enregistrements, et ce que chacun prouve
+
+| | Où | Ce que ça prouve |
+|---|---|---|
+| **SPF** | `TXT` sur le domaine d'envoi | que ce service a le droit d'écrire en votre nom |
+| **DKIM** | `TXT` sur `<sélecteur>._domainkey` | que le message n'a pas été modifié en route |
+| **DMARC** | `TXT` sur `_dmarc.<domaine>` | ce qu'il faut faire quand l'un des deux échoue |
+
+Les valeurs à poser dépendent de la passerelle :
+
+```dns
+; ── Resend ────────────────────────────────────────────────────────────
+send.exemple.ci.            TXT   "v=spf1 include:amazonses.com ~all"
+resend._domainkey.exemple.ci.  TXT   "p=…"        ← donnée par Resend
+
+; ── Brevo ─────────────────────────────────────────────────────────────
+exemple.ci.                 TXT   "v=spf1 include:spf.brevo.com mx ~all"
+brevo._domainkey.exemple.ci.   TXT   "k=rsa; p=…" ← donnée par Brevo
+
+; ── DMARC, commun aux deux ────────────────────────────────────────────
+_dmarc.exemple.ci.          TXT   "v=DMARC1; p=none; rua=mailto:dmarc@exemple.ci"
+```
+
+Les `include:` et les sélecteurs (`resend`, `brevo`) sont des constantes
+publiées. **La clé DKIM, elle, est propre à votre compte** : elle s'affiche dans
+l'écran « domaine » du fournisseur et ne se devine pas.
+
+Commencer en `p=none` est délibéré : DMARC vous fait alors **rapporter** les
+échecs sans rejeter le courrier. On durcit en `p=quarantine` puis `p=reject`
+une fois les rapports propres — durcir d'emblée sur un domaine neuf fait
+disparaître ses propres relances.
+
+#### Le piège du sous-domaine
+
+Si vous envoyez depuis `ndank.exemple.ci`, **SPF et DKIM doivent être posés sur
+ce sous-domaine-là**, pas sur `exemple.ci` : ils ne s'héritent pas.
+
+DMARC, lui, **s'hérite**. Un sous-domaine sans `_dmarc` n'est donc pas
+« sans politique » : il applique celle du domaine parent. C'est exactement ce
+qu'on a mesuré le 9 septembre 2026 — un `p=none` hérité, jamais choisi, et un
+courriel dans les indésirables.
 
 **Ce qui relève de Ndank** : que le message soit bon quand il arrive. C'est le
 seul levier de ce côté-ci, et il vaut la peine — voir le sujet, ci-dessous.
@@ -407,6 +462,40 @@ seul levier de ce côté-ci, et il vaut la peine — voir le sujet, ci-dessous.
 **Et un rappel qui va en spam est pire qu'un envoi raté** : Ndank le compte
 `parti: true`, l'échelle avance, et l'abonné ne voit rien. C'est la même
 famille que le rebond de Resend et que le `Pending` de la passerelle Android.
+
+### Brevo filtre par adresse IP, et le dit mal
+
+Constaté le 11 septembre 2026, au premier appel réel.
+
+**La clé API de Brevo n'accepte que des adresses IP déclarées.** Tant que la
+vôtre ne l'est pas, chaque appel rend :
+
+```json
+{ "code": "unauthorized",
+  "message": "We have detected you are using an unrecognised IP address
+              2001:42d8:…. If you performed this action make sure to add
+              the new IP address in this link: …" }
+```
+
+`401`, c'est-à-dire le code de « mauvais identifiants ». **Le réflexe est donc
+de croire la clé fausse et d'en regénérer une, ce qui ne change rien.** Seul le
+message nomme la vraie cause, et il faut le lire jusqu'au bout.
+
+Trois choses à savoir avant de chercher :
+
+- **la clé SMTP n'est pas soumise au même filtre**, par défaut. Deux clés du
+  même compte, deux comportements — de quoi conclure à tort que la clé API est
+  cassée ;
+- **IPv4 et IPv6 sont deux entrées distinctes.** Une machine qui sort en IPv6 le
+  matin et en IPv4 l'après-midi doit avoir déclaré les deux ;
+- **une IP résidentielle change.** Un serveur à adresse fixe n'a le problème
+  qu'une fois ; un poste de développement le retrouve après chaque
+  renouvellement de bail DHCP.
+
+Les adresses se déclarent sur `app.brevo.com/security/authorised_ips`.
+
+**Resend n'a pas cette contrainte** — c'est une particularité de Brevo, pas une
+règle du courriel.
 
 ### Ce que la rédaction garantit
 
@@ -1625,7 +1714,7 @@ confirmé**. Resend et Twilio ne le donnent pas au moment de l'envoi.
 #### Quatre échecs avant, et chacun a trouvé quelque chose
 
 Il a fallu quatre tentatives. Aucun des trois défauts de code n'était visible
-aux 700 tests.
+aux sept cents tests d'alors.
 
 **1. Le mode local est tombé en quatre-vingt-dix secondes.** Le premier
 `/health` a répondu en 1,5 s — déjà lent pour un réseau local — puis le
@@ -1752,8 +1841,8 @@ pour qu'on l'apprenne autrement que par un abonné qui appelle.
 **Le paquet n'est pas publié sur npm, et il ne le sera pas avant que cette liste
 soit vide.**
 
-628 tests passent. Ils tournent tous contre des faux que j'ai écrits — et un
-faux ne dément jamais son auteur. Chaque ligne non cochée est un pari.
+745 tests passent. Ils tournent presque tous contre des faux que j'ai écrits —
+et un faux ne dément jamais son auteur. Chaque ligne non cochée est un pari.
 
 **Quatre l'ont été le 4 septembre 2026**, en installant `ndank` dans
 [Baobart](https://github.com/auceps-dev-team/Baobart) et en appliquant son
@@ -1782,21 +1871,37 @@ schéma à un vrai PostgreSQL (Prisma 6.19.3, branche `Ndank-Baobart-Test`).
       est identique avant et après. Le retour arrière est bien celui de
       PostgreSQL.
 
-Restent deux paris, tous deux à moitié levés.
+Restent trois paris, tous à moitié levés.
 
-- [ ] **Les passerelles d'envoi.** Cinq sont écrites ; **deux ont émis pour de
-      vrai**.
+- [ ] **Les passerelles d'envoi.** Cinq sont écrites ; **trois ont émis pour de
+      vrai**, et les deux du courriel sont désormais rejouables.
 
-      **Resend** — le 5 septembre 2026. Une relance complète, rédigée par
-      `redigerCourriel`, part et rend son identifiant ; clé invalide → 401,
-      domaine non vérifié → 403. Il reste qu'aucun courriel n'a atterri dans une
-      **vraie boîte** : les essais visaient les adresses de test de Resend.
+      **Resend** — le 5 septembre 2026, puis le 11. Une relance complète,
+      rédigée par `redigerCourriel`, part et rend son identifiant ; clé
+      invalide → 401, domaine non vérifié → 403. Elle a atteint une **vraie
+      boîte** le 9 septembre — et elle est tombée dans les indésirables, faute
+      de SPF et de DMARC sur le domaine d'envoi.
+
+      **Brevo** — le 11 septembre 2026. Même relance, même vraie boîte, un
+      identifiant `<…@smtp-relay.mailin.fr>` en retour. Deux choses que seul
+      l'appel réel pouvait dire : **la clé API est restreinte par adresse IP**
+      là où la clé SMTP ne l'est pas — un `401` qui nomme l'IP et non la clé,
+      donc facile à lire de travers — et le compte n'a **aucun domaine
+      authentifié**, ce qui promet le même sort qu'à Resend.
+
+      ```
+      npm run bac-a-sable-courriel
+      ```
+
+      Onze vérifications, zéro échec, les deux passerelles dans un seul
+      passage. L'essai de septembre avait été fait à la main : un essai qu'on
+      ne peut pas rejouer ne prouve rien le lendemain.
 
       **La passerelle Android** — le 7 septembre 2026, un Samsung A15 et une SIM
       Orange. `Delivered` en cinq secondes, en mode local. Voir le récit
       plus haut : quatre échecs et trois défauts de code avant d'y arriver.
 
-      **Brevo, Twilio et Expo n'ont jamais été appelés.**
+      **Twilio et Expo n'ont jamais été appelés.**
 
 - [x] **La passerelle Android.** Écrite d'après la documentation, elle n'avait
       jamais appelé un téléphone. Elle l'a fait le 7 septembre 2026, et l'essai
@@ -1821,6 +1926,27 @@ Restent deux paris, tous deux à moitié levés.
       `npm run bac-a-sable-webhook` le rejoue depuis une capture.
 
       **MTN n'a jamais été appelé.**
+
+- [ ] **lomi.** Le premier adaptateur **écrit après avoir appelé l'API**, et non
+      d'après une documentation. Douze vérifications contre le vrai bac à sable,
+      le 10 septembre 2026 : invitation, lien durable de quarante-cinq jours,
+      page de paiement qui répond, rejeu qui rend le même lien, constat qui ne
+      conclut pas à l'échec faute de nouvelle.
+
+      ```
+      npm run bac-a-sable-lomi
+      ```
+
+      **Le paiement lui-même reste hors de portée** : aucun canal n'est raccordé
+      au compte marchand — « *Wave provider not configured for this
+      organization* » — et sur 132 routes documentées, **aucune ne permet d'y
+      remédier**. C'est lomi. qui raccorde, après identification du marchand.
+
+      **La signature du webhook non plus** : elle est un vrai HMAC-SHA256 du
+      corps brut, mais son secret `whsec_` n'est pas exposé par l'API et se
+      recopie du tableau de bord.
+
+      Le relevé complet est dans `docs/lomi.md`.
 
 - [x] **Les unités de Flutterwave.** On supposait des unités **majeures**, sans
       l'avoir vérifié — la forme exacte de l'erreur de facteur 100 déjà

@@ -6,6 +6,98 @@ le reste.
 
 ---
 
+## 0.21.1
+
+### Corrigé
+
+**Le routeur d'API n'envoyait pas `debut`.** `LigneTableau` le porte depuis
+toujours, chaque hôte le remplit, et `versJson` le jetait au dernier moment. Le
+champ traversait donc la base, le port et l'implémentation pour mourir à la
+frontière — alors que son propre commentaire annonce « l'abonné y lit son
+calendrier ».
+
+Sans lui, aucun écran ne peut dire **depuis quand** un cycle court. Un abonné
+qui veut savoir ce qu'il a payé n'avait que la date de fin.
+
+**Et `versJson` passait l'échéance comme date de début** à `etatDe` :
+
+```ts
+cycle: { debut: ligne.echeance, echeance: ligne.echeance, … }
+```
+
+Sans conséquence aujourd'hui — `etatDe` ne lit jamais `cycle.debut`. C'est
+précisément ce qui rendait le défaut dangereux : le jour où l'état dépendrait du
+début de cycle, il aurait rendu un état faux, silencieusement, et sur tous les
+abonnements à la fois.
+
+**Le même oubli s'était glissé dans l'assistant de test.** `deCycle` construit un
+cycle par `cycleApresPaiement`, puis n'en recopiait pas `debut` — de sorte qu'un
+test écrit pour vérifier le champ mesurait autre chose. Corrigé aussi : un
+assistant qui reproduit le défaut qu'on corrige ne peut pas le constater.
+
+### Éprouvé
+
+**Brevo a émis pour de vrai**, le 11 septembre 2026. Une relance complète,
+rédigée par `redigerCourriel`, part vers une vraie boîte et rend son
+identifiant. Deux choses que seul l'appel réel pouvait dire :
+
+- **la clé API est restreinte par adresse IP** là où la clé SMTP ne l'est pas.
+  Le refus est un `401` — le code de « mauvais identifiants » — et seul le
+  message nomme l'IP. On regénère une clé pendant une heure avant de le lire ;
+- le compte n'a **aucun domaine authentifié**, ce qui promet le même sort qu'à
+  Resend : les indésirables.
+
+```
+npm run bac-a-sable-courriel
+```
+
+Onze vérifications, les deux passerelles de courriel dans un seul passage.
+L'essai Resend de septembre avait été fait à la main : un essai qu'on ne peut
+pas rejouer ne prouve rien le lendemain.
+
+### Documenté
+
+**Les deux dépendances structurelles du courriel**, celles qu'aucune ligne de
+code ne règle : le filtrage par IP de Brevo, et les trois enregistrements DNS —
+SPF, DKIM, DMARC — avec ce que chacun prouve, les valeurs par passerelle, et le
+piège du sous-domaine (SPF et DKIM ne s'héritent pas ; DMARC si).
+
+Le README dit aussi ce que `verifierEnvoi` **ne** peut **pas** voir : ces deux
+pannes laissent une clé présente et bien formée, et produisent le même symptôme
+qu'une clé absente.
+
+### Retiré
+
+**Une justification fausse dans l'adaptateur lomi.** Le commentaire de `inviter`
+affirmait qu'une session de soixante minutes serait morte à l'ouverture, « parce
+qu'une relance part par SMS et se lit le lendemain matin ».
+
+C'est faux : le SMS porte le lien signé de **Ndank**, valable quinze jours, et
+`inviter` n'est appelé qu'au moment où l'abonné ouvre cette page. La session
+naîtrait fraîche.
+
+Le vrai motif est plus solide, et il est maintenant écrit : dans le flux de
+relance, `referenceDeVersement` est **stable sur tout le cycle**. L'abonné qui
+abandonne à neuf heures et revient à midi présente la même référence — un
+fournisseur idempotent lui rendrait la session **expirée**. Le choix du lien
+durable ne change pas ; la raison, si.
+
+Une raison fausse dans un commentaire est pire qu'une absence de raison : elle
+enseigne quelque chose de faux à qui la lit.
+
+### Ce que cela dit de la méthode
+
+Les deux défauts de `debut` ont été relevés par **l'écriture de Ndank App**, qui
+avait besoin du champ pour afficher un calendrier et ne l'a pas trouvé.
+
+Aucun test de ce dépôt ne pouvait les voir : on ne remarque pas l'absence d'un
+champ qu'on n'a jamais demandé, et un défaut latent ne se manifeste par
+définition pas. C'est la troisième fois qu'un lecteur extérieur trouve en lisant
+ce que des centaines de tests ne voyaient pas — après le `poivre` exigé et
+jamais lu, et la clé d'idempotence qui n'isolait pas les marchands.
+
+---
+
 ## 0.21.0
 
 ### Ajouté
