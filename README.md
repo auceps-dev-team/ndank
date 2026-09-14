@@ -1306,6 +1306,30 @@ se construire sans lui : un port qu'on peut omettre finit par être omis, et l'o
 découvre le jour de l'incident que la fonction qu'on croyait sûre ne l'était que
 dans les exemples.
 
+### Ne construisez pas le vérificateur au chargement du module
+
+```ts
+// ✗ s'évalue à l'import
+const verifier = verificateur({ secret: secretDuCode(), tentatives });
+
+// ✓ s'évalue à l'appel
+const verifier = (id: string, code: string) =>
+  verificateur({ secret: secretDuCode(), tentatives })(id, code);
+```
+
+`verificateur()` est une fabrique : elle lit son secret quand on l'appelle. Si
+la fonction qui fournit ce secret lève quand la variable d'environnement manque
+— ce qu'elle devrait faire — alors la placer au niveau du module fait lever à
+**l'import**.
+
+Le piège n'apparaît pas au développement, où le secret est posé. Il apparaît à
+la construction : un `next build` charge chaque route pour en collecter les
+métadonnées, et échoue sur un secret de production qui n'a rien à faire là.
+L'erreur parle du secret, jamais du moment.
+
+Relevé par l'écriture de Ndank App, qui l'a rencontré en montant sa connexion
+abonné.
+
 
 ## Ce que Ndank ne fait pas
 
