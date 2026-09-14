@@ -467,8 +467,30 @@ export function bictorys(config: ConfigBictorys): Encaissement {
      *
      * Le premier couple est ce qu'on veut : il **lie le corps**, et
      * l'horodatage protège du rejeu — on refuse au-delà de cinq minutes de
-     * dérive. À ce jour, c'est la meilleure des cinq passerelles du dépôt : ni
-     * Flutterwave, ni lomi., ni Paystack n'ont de protection contre le rejeu.
+     * dérive. Aucune autre passerelle du dépôt n'offre cela.
+     *
+     * ════════════════════════════════════════════════════════════════════════
+     * MAIS IL N'ARRIVE PAS, ET IL A FALLU UN VRAI ENVOI POUR LE SAVOIR
+     *
+     * Webhook réellement reçu le 14 septembre 2026, capté octet pour octet.
+     * Ses en-têtes, en entier :
+     *
+     *   accept · content-length · content-type · host · user-agent
+     *   x-secret-key
+     *
+     * **Pas de signature. Pas d'horodatage.** Seulement le secret partagé.
+     * `afrotools` annonçait le couple comme « optionnel » ; sur ce compte de
+     * bac à sable, il est simplement absent.
+     *
+     * Ce paragraphe a donc affirmé le contraire jusqu'à la 0.22.2 — « la
+     * meilleure des cinq passerelles » — sur la foi d'une fiche. **En pratique,
+     * Bictorys est au niveau de Flutterwave** : un secret partagé qui prouve
+     * que l'expéditeur le connaît, et rien du contenu. Mesuré : un montant
+     * réécrit de 100 à 100 000 passe.
+     *
+     * Le code du dessous ne change pas : il préfère le HMAC quand il arrive. Ce
+     * qui change, c'est ce qu'on a le droit d'en dire — et ce sur quoi il faut
+     * compter en attendant, c'est-à-dire la réconciliation.
      *
      * Le troisième est exactement le `verif-hash` de Flutterwave : un secret
      * partagé qui prouve seulement que l'expéditeur le connaît. **Il

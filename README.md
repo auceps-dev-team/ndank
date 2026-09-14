@@ -1967,9 +1967,16 @@ Restent quatre paris, tous à moitié levés.
       157** portent le statut `verified` — mais plusieurs pièges citent des
       appels réels. Ce sont les pièges qui portent la preuve, pas l'étiquette.
 
-      **Sa signature de webhook est la meilleure des cinq** : HMAC-SHA256 de
-      `horodatage.corps`, donc elle lie le contenu **et** protège du rejeu. Ni
-      Flutterwave, ni Paystack, ni lomi. ne refusent un événement rejoué.
+      **Sa signature de webhook est la meilleure des cinq — sur le papier.**
+      HMAC-SHA256 de `horodatage.corps` : elle lie le contenu **et** protège du
+      rejeu, ce qu'aucune autre ne fait.
+
+      **Mais elle n'arrive pas.** Un webhook réellement reçu le 14 septembre
+      2026 ne portait, pour toute preuve, qu'un `x-secret-key` — le secret en
+      clair, sans signature ni horodatage. En pratique, Bictorys est donc au
+      niveau de Flutterwave : un montant réécrit de 100 à 100 000 passe.
+      L'adaptateur préfère le HMAC quand il arrive ; en attendant, c'est la
+      réconciliation qui protège.
 
       **Un paiement a abouti**, et c'est le seul fournisseur du dépôt dont le
       bac à sable mène la boucle entière tout seul : Bictorys expose un

@@ -6,6 +6,53 @@ le reste.
 
 ---
 
+## 0.22.2
+
+### Corrigé — une affirmation, pas du code
+
+**« La meilleure signature des cinq » était faux**, et c'est un vrai webhook qui
+l'a montré.
+
+La 0.22.0 annonçait que Bictorys signe ses webhooks en HMAC-SHA256 de
+`horodatage.corps`, donc qu'il lie le contenu et protège du rejeu. C'est ce que
+sa documentation décrit, et c'eût été la seule passerelle du dépôt à le faire.
+
+Webhook réellement reçu le 14 septembre 2026, capté octet pour octet. Ses
+en-têtes, en entier :
+
+```
+accept · content-length · content-type · host · user-agent · x-secret-key
+```
+
+**Pas de signature. Pas d'horodatage.** `afrotools` annonçait le couple comme
+« optionnel » ; sur ce compte, il est absent.
+
+**En pratique, Bictorys est donc au niveau de Flutterwave** : un secret partagé
+qui prouve que l'expéditeur le connaît, et rien du contenu. Mesuré sur le corps
+réel — un montant réécrit de 100 à 100 000 passe la vérification.
+
+Le code ne change pas : il préférait déjà le HMAC quand il arrive, et il
+l'acceptera le jour où il arrivera. Ce qui change, c'est ce qu'on a le droit d'en
+dire.
+
+### Éprouvé — le webhook, reçu pour de vrai
+
+Le corps authentique, passé à `lireWebhook` :
+
+```
+lu      : REUSSI | 100 XOF | ref 20260914-2-payev4ct9
+réglé   : 2026-09-14T23:16:57.537Z
+id      : e8905a98-4304-484f-9ac0-4f02c486b27b
+mauvais secret refusé : true
+```
+
+Trois choses que seul un envoi réel pouvait confirmer : `paymentReference`
+traverse intact, l'horodatage arrive bien dans la forme non-ISO que
+`lireHorodatage` normalise, et `amount` est un flottant — `100.0` — là où la
+création prenait un entier.
+
+---
+
 ## 0.22.1
 
 ### Corrigé
