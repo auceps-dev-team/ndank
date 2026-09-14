@@ -324,6 +324,7 @@ describe("bictorys — les états", () => {
     ["processing", "EN_ATTENTE"],
     ["failed", "ECHOUE"],
     ["cancelled", "ECHOUE"],
+    ["expired", "EXPIRE"],
     ["quelque chose de neuf", "INCONNU"],
   ];
 
@@ -344,6 +345,20 @@ describe("bictorys — les états", () => {
     const issue = await bictorys({ ...CONFIG, http }).constater("r", "x");
 
     expect(issue.etat).toBe("EN_ATTENTE");
+    expect(issue.regleLe).toBeNull();
+  });
+
+  /**
+   * Le cas manquait : il tombait dans `INCONNU`, donc on ne concluait rien
+   * d'une charge pourtant close. Trouvé en relisant la documentation
+   * officielle, qui donne le seuil : deux heures d'attente et la transaction
+   * est expirée d'office.
+   */
+  it("conclut sur une charge expirée plutôt que de rester perplexe", async () => {
+    const { http } = fauxHttp([{ corps: { id: "x", status: "expired" } }]);
+    const issue = await bictorys({ ...CONFIG, http }).constater("r", "x");
+
+    expect(issue.etat).toBe("EXPIRE");
     expect(issue.regleLe).toBeNull();
   });
 

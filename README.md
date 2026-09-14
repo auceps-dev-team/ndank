@@ -1971,12 +1971,18 @@ Restent quatre paris, tous à moitié levés.
       HMAC-SHA256 de `horodatage.corps` : elle lie le contenu **et** protège du
       rejeu, ce qu'aucune autre ne fait.
 
-      **Mais elle n'arrive pas.** Un webhook réellement reçu le 14 septembre
+      **Mais elle n'existe pas.** Un webhook réellement reçu le 14 septembre
       2026 ne portait, pour toute preuve, qu'un `x-secret-key` — le secret en
-      clair, sans signature ni horodatage. En pratique, Bictorys est donc au
-      niveau de Flutterwave : un montant réécrit de 100 à 100 000 passe.
-      L'adaptateur préfère le HMAC quand il arrive ; en attendant, c'est la
-      réconciliation qui protège.
+      clair. Et la documentation officielle de Bictorys, relue le même jour, ne
+      mentionne **ni HMAC, ni signature, ni horodatage** : son unique méthode de
+      validation est la comparaison du secret partagé.
+
+      Le couple `X-Webhook-Signature` / `X-Webhook-Timestamp` venait d'une fiche
+      `afrotools`, décrite avec une précision qui inspirait confiance jusqu'à la
+      tolérance de dérive en millisecondes. Elle était inventée.
+
+      En pratique, Bictorys est donc au niveau de Flutterwave : un montant
+      réécrit de 100 à 100 000 passe. C'est la réconciliation qui protège.
 
       **Un paiement a abouti**, et c'est le seul fournisseur du dépôt dont le
       bac à sable mène la boucle entière tout seul : Bictorys expose un

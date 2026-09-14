@@ -138,6 +138,22 @@ export const CHAMPS_BICTORYS = [
  * rien conclure. C'est le même raisonnement que le `held` de lomi.
  *
  * `reversed` devient `ECHOUE` : un paiement repris n'achète pas de temps.
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ * `expired`, ET LES DEUX HEURES QU'IL FAUT CONNAÎTRE
+ *
+ * Ce cas manquait jusqu'à la 0.22.3 — il tombait dans `INCONNU`, et l'on ne
+ * concluait donc rien d'une charge pourtant close. Trouvé en lisant la
+ * documentation officielle, qui donne au passage le seuil :
+ *
+ *   « Une transaction est automatiquement considérée comme "expirée" si elle
+ *     est en attente depuis plus de **deux heures**. »
+ *
+ * C'est court, et cela vaut d'être su : une charge créée le soir est morte le
+ * lendemain matin. Le lien de relance de Ndank, lui, vit quinze jours et fait
+ * naître une charge neuve à chaque ouverture de page — l'abonné ne rencontre
+ * donc jamais cette expiration. Un hôte qui garderait une charge d'un cycle sur
+ * l'autre, si.
  */
 function etatDepuis(statut: string | undefined): EtatEncaissement {
   switch ((statut ?? "").toLowerCase()) {
@@ -152,6 +168,8 @@ function etatDepuis(statut: string | undefined): EtatEncaissement {
     case "canceled":
     case "reversed":
       return "ECHOUE";
+    case "expired":
+      return "EXPIRE";
     default:
       return "INCONNU";
   }
@@ -479,8 +497,21 @@ export function bictorys(config: ConfigBictorys): Encaissement {
      *   x-secret-key
      *
      * **Pas de signature. Pas d'horodatage.** Seulement le secret partagé.
-     * `afrotools` annonçait le couple comme « optionnel » ; sur ce compte de
-     * bac à sable, il est simplement absent.
+     *
+     * Et la documentation officielle, relue le 14 septembre, tranche :
+     *
+     *   « Chaque notification envoyée inclut le header **X-Secret-Key** qui
+     *     contient la valeur de la clé secrète du webhook que vous avez
+     *     renseignée sur votre dashboard. Vous devez vérifier que la clé
+     *     secrète envoyée correspond à la clé secrète enregistrée. »
+     *
+     * Elle ne mentionne **ni HMAC, ni signature, ni horodatage**, nulle part.
+     * Le couple `X-Webhook-Signature` / `X-Webhook-Timestamp` que décrit
+     * `afrotools` — avec une précision qui inspire confiance, jusqu'à la
+     * tolérance de dérive en millisecondes — **n'existe pas chez Bictorys**.
+     *
+     * Le code qui le vérifie reste : il ne coûte rien, et il servira si
+     * Bictorys l'ajoute un jour. Mais on ne compte pas dessus.
      *
      * Ce paragraphe a donc affirmé le contraire jusqu'à la 0.22.2 — « la
      * meilleure des cinq passerelles » — sur la foi d'une fiche. **En pratique,

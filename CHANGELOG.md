@@ -6,6 +6,56 @@ le reste.
 
 ---
 
+## 0.22.3
+
+### Corrigé
+
+**`expired` tombait dans `INCONNU`.** L'adaptateur ne concluait donc rien d'une
+charge pourtant close, et la relance continuait de tourner sur un paiement
+impossible.
+
+Trouvé en relisant la documentation officielle de Bictorys — qui donne au
+passage un seuil qu'aucune autre source ne mentionne :
+
+> « Une transaction est automatiquement considérée comme "expirée" si elle est
+> en attente depuis plus de **deux heures**. »
+
+C'est court. Le lien de relance de Ndank vit quinze jours et fait naître une
+charge neuve à chaque ouverture de page, donc l'abonné ne rencontre jamais cette
+expiration. Un hôte qui garderait une charge d'un cycle sur l'autre, si.
+
+### La signature HMAC de Bictorys n'existe pas
+
+La 0.22.2 disait qu'elle « n'arrive pas » et supposait une option non activée.
+La documentation officielle, relue le 14 septembre, dit mieux que cela :
+
+> « Chaque notification envoyée inclut le header **X-Secret-Key** qui contient
+> la valeur de la clé secrète du webhook que vous avez renseignée sur votre
+> dashboard. Vous devez vérifier que la clé secrète envoyée correspond à la clé
+> secrète enregistrée. »
+
+**Ni HMAC, ni signature, ni horodatage — nulle part.** Le couple
+`X-Webhook-Signature` / `X-Webhook-Timestamp` venait d'une fiche `afrotools`,
+décrite avec une précision qui inspirait confiance jusqu'à la tolérance de
+dérive en millisecondes. Elle était inventée.
+
+Le code qui la vérifie reste : il ne coûte rien et servira si Bictorys l'ajoute.
+On ne compte simplement pas dessus.
+
+### Ce que cet aller-retour enseigne sur les deux sources
+
+Ni l'une ni l'autre ne suffit, et elles se trompent sur des choses différentes :
+
+| | `afrotools` | doc officielle |
+|---|---|---|
+| la signature | **inventée** | juste |
+| la forme du webhook | juste | **périmée** — elle décrit `{"event":"charge.successful","data":{…}}` avec un statut « réussi » en français, là où l'envoi réel est un objet plat avec `succeeded` |
+| le seuil de deux heures | absent | **seule source** |
+
+C'est la mesure qui arbitre, et elle seule.
+
+---
+
 ## 0.22.2
 
 ### Corrigé — une affirmation, pas du code
