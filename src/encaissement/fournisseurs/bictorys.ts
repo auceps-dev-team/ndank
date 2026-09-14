@@ -268,6 +268,28 @@ export function bictorys(config: ConfigBictorys): Encaissement {
     return lu;
   }
 
+  /**
+   * Retrouve une transaction par notre référence.
+   *
+   * Rend `null` quand rien ne correspond — ce qui n'est pas un échec : l'abonné
+   * n'a peut-être pas encore payé. `ECHOUE` clorait un cycle qui n'a rien
+   * décidé.
+   */
+  async function parReference(reference: string): Promise<Issue | null> {
+    const lu = await appeler("/pay/v1/transactions", "GET", config.clePrivee);
+    const liste = Array.isArray(lu)
+      ? (lu as Array<Record<string, unknown>>)
+      : ((lu["data"] as Array<Record<string, unknown>>) ?? []);
+
+    for (const t of liste) {
+      if (t["paymentReference"] === reference) {
+        return lireTransaction(reference, t, t, null);
+      }
+    }
+
+    return null;
+  }
+
   return {
     nom: "bictorys",
     devises: DEVISES,
@@ -360,10 +382,10 @@ export function bictorys(config: ConfigBictorys): Encaissement {
      * Avec l'identifiant, un appel suffit : `GET /transactions/{id}/status`.
      *
      * Sans lui, on balaie la liste des transactions en filtrant sur notre
-     * `paymentReference`. **Ce chemin n'a pas pu être éprouvé** : en bac à
-     * sable, `GET /pay/v1/transactions` rend une liste vide, même avec une
-     * charge en attente. Il est écrit d'après la forme documentée de l'objet,
-     * et il faut le tenir pour non vérifié jusqu'à un vrai paiement.
+     * `paymentReference`. **Éprouvé le 14 septembre 2026**, contre un paiement
+     * réellement abouti par le simulateur du bac à sable — la liste ne se
+     * peuple qu'à ce moment-là, ce qui avait d'abord fait croire que ce chemin
+     * était intestable.
      *
      * ════════════════════════════════════════════════════════════════════════
      * DEUX RÉPONSES DU BAC À SABLE QUI SURPRENNENT
@@ -389,32 +411,49 @@ export function bictorys(config: ConfigBictorys): Encaissement {
           config.clePrivee,
         );
 
-        return lireTransaction(reference, lu, lu, identifiantFournisseur);
+        const brut = lireTransaction(reference, lu, lu, identifiantFournisseur);
+
+        /**
+         * ══════════════════════════════════════════════════════════════════
+         * LE CHEMIN RAPIDE EN DIT MOINS, ET C'EST DANGEREUX
+         *
+         * Mesuré le 14 septembre 2026, sur un paiement réellement abouti :
+         *
+         *     /status        → { "id": "aa8aeb74…", "status": "succeeded" }
+         *     /transactions  → … "amount": 100.0, "timestamp": "…"
+         *
+         * La route d'état ne rend **ni montant ni horodatage**. Un `REUSSI`
+         * en sortirait donc avec `montant: 0` — et `reconcilier` achète du
+         * temps avec ce montant. L'abonné aurait payé, le fournisseur
+         * l'aurait confirmé, et le cycle n'aurait pas avancé d'un jour.
+         *
+         * Aucun test contre un faux n'aurait trouvé cela : c'est celui qui
+         * écrit le faux qui décide de ce que la réponse contient, et il y met
+         * naturellement un montant.
+         *
+         * On complète donc par la liste quand le succès arrive sans montant.
+         * Un appel de plus, seulement dans ce cas, et seulement au moment où
+         * l'on s'apprête à conclure.
+         */
+        if (brut.etat !== "REUSSI" || brut.montant > 0) return brut;
+
+        const complet = await parReference(reference);
+        return complet ?? brut;
       }
 
-      const lu = await appeler("/pay/v1/transactions", "GET", config.clePrivee);
-      const liste = Array.isArray(lu)
-        ? (lu as Array<Record<string, unknown>>)
-        : ((lu["data"] as Array<Record<string, unknown>>) ?? []);
-
-      for (const t of liste) {
-        if (t["paymentReference"] === reference) {
-          return lireTransaction(reference, t, t, null);
+      return (
+        (await parReference(reference)) ?? {
+          reference,
+          etat: "EN_ATTENTE",
+          montant: 0,
+          devise: "XOF",
+          identifiantFournisseur: null,
+          regleLe: null,
+          brut: null,
         }
-      }
-
-      // Rien trouvé n'est pas un échec : l'abonné n'a peut-être pas encore
-      // payé. `ECHOUE` clorait un cycle qui n'a rien décidé.
-      return {
-        reference,
-        etat: "EN_ATTENTE",
-        montant: 0,
-        devise: "XOF",
-        identifiantFournisseur: null,
-        regleLe: null,
-        brut: null,
-      };
+      );
     },
+
 
     /**
      * Lit un webhook, et refuse ce qui n'est pas signé.

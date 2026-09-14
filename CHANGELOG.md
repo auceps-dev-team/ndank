@@ -6,6 +6,58 @@ le reste.
 
 ---
 
+## 0.22.1
+
+### Corrigé
+
+**Un succès Bictorys arrivait sans son montant, et personne n'aurait rien vu.**
+
+Trouvé par un paiement réellement mené à son terme, le 14 septembre 2026 :
+
+```
+/status        → { "id": "aa8aeb74…", "status": "succeeded" }
+/transactions  → … "amount": 100.0, "timestamp": "…"
+```
+
+La route d'état ne rend **ni montant ni horodatage**. `constater` en sortait
+donc avec `montant: 0` — et `reconcilier` achète du temps avec ce montant.
+L'abonné aurait payé, Bictorys l'aurait confirmé, et **le cycle n'aurait pas
+avancé d'un jour**. Aucune erreur nulle part.
+
+L'adaptateur complète désormais par la liste quand un succès arrive sans
+montant. Un appel de plus, seulement dans ce cas.
+
+**Aucun test contre un faux n'aurait trouvé cela** : c'est celui qui écrit le
+faux qui décide de ce que la réponse contient, et il y met naturellement un
+montant.
+
+### Éprouvé
+
+**Un paiement a abouti.** Bictorys expose un **simulateur** en bac à sable —
+`/simulator/v1/` — qui approuve une transaction sans opérateur.
+
+Il a fallu un échec pour le trouver. Les premières tentatives sur le tunnel
+hébergé, avec un vrai numéro ivoirien, ont été refusées par Orange Money
+(`USER_INVALID`) et par Wave : **le tunnel route vers les vrais opérateurs**, qui
+ne connaissent pas ce compte en test. C'est le chemin **direct**, avec
+`payment_type` en paramètre d'URL, qui rend un lien de simulateur — et les
+fixtures d'`afrotools` donnaient le numéro à employer, sénégalais.
+
+Le bac à sable mène donc maintenant la boucle entière, ce qu'aucun autre script
+du dépôt ne fait :
+
+```
+npm run bac-a-sable-bictorys
+→ 24 vérifiées, 0 en échec, 1 hors de portée
+```
+
+**Et le balayage par référence est levé.** Il était marqué non vérifiable parce
+que `GET /pay/v1/transactions` rend une liste vide — la liste ne se peuple qu'au
+premier paiement abouti. Elle porte alors `paymentReference`, et le chemin
+fonctionne.
+
+---
+
 ## 0.22.0
 
 ### Ajouté

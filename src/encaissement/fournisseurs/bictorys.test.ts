@@ -239,6 +239,60 @@ describe("bictorys — constater", () => {
     expect(issue.etat).toBe("REUSSI");
   });
 
+  /**
+   * Trouvé par un vrai paiement, le 14 septembre 2026, et par rien d'autre.
+   *
+   * `/status` rend `{id, status}` et rien de plus — ni montant ni horodatage.
+   * Un `REUSSI` en sortirait donc avec `montant: 0`, et `reconcilier` achète du
+   * temps avec ce montant : l'abonné aurait payé, le fournisseur l'aurait
+   * confirmé, et le cycle n'aurait pas avancé d'un jour.
+   */
+  it("complète par la liste un succès rendu sans montant", async () => {
+    const { http, vues } = fauxHttp([
+      // la route d'état, minimale, telle qu'elle répond vraiment
+      { corps: { id: "aa8aeb74", status: "succeeded" } },
+      // la liste, qui porte tout
+      {
+        corps: [
+          {
+            id: "aa8aeb74",
+            paymentReference: "20260914-1-abonnement7",
+            status: "succeeded",
+            amount: 100,
+            currency: "XOF",
+            timestamp: "2026-09-14 22:39:53.823",
+          },
+        ],
+      },
+    ]);
+
+    const issue = await bictorys({ ...CONFIG, http }).constater(
+      DEMANDE.reference,
+      "aa8aeb74",
+    );
+
+    expect(vues).toHaveLength(2);
+    expect(issue.etat).toBe("REUSSI");
+    expect(issue.montant).toBe(100);
+    expect(issue.regleLe?.toISOString()).toBe("2026-09-14T22:39:53.823Z");
+  });
+
+  it("ne va pas chercher la liste quand l'état suffit", async () => {
+    const { http, vues } = fauxHttp([
+      { corps: { id: "x", status: "succeeded", amount: 2000, currency: "XOF" } },
+    ]);
+
+    await bictorys({ ...CONFIG, http }).constater(DEMANDE.reference, "x");
+    expect(vues).toHaveLength(1);
+  });
+
+  it("ne va pas chercher la liste quand rien n'est conclu", async () => {
+    const { http, vues } = fauxHttp([{ corps: { id: null, status: "pending" } }]);
+
+    await bictorys({ ...CONFIG, http }).constater(DEMANDE.reference, "x");
+    expect(vues).toHaveLength(1);
+  });
+
   it("rend EN_ATTENTE quand il ne trouve rien, jamais ECHOUE", async () => {
     const { http } = fauxHttp([{ corps: [] }]);
 

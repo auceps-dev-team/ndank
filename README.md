@@ -1971,9 +1971,19 @@ Restent quatre paris, tous à moitié levés.
       `horodatage.corps`, donc elle lie le contenu **et** protège du rejeu. Ni
       Flutterwave, ni Paystack, ni lomi. ne refusent un événement rejoué.
 
-      Deux choses restent non éprouvées : **aucun paiement n'a abouti** — il
-      faut suivre le lien et payer — et le **balayage par référence**, parce que
-      `GET /pay/v1/transactions` rend une liste vide en bac à sable.
+      **Un paiement a abouti**, et c'est le seul fournisseur du dépôt dont le
+      bac à sable mène la boucle entière tout seul : Bictorys expose un
+      simulateur qui approuve une transaction sans opérateur.
+
+      Il a fallu un échec pour le trouver. Le tunnel hébergé route vers les
+      **vrais** opérateurs, qui refusent un numéro ordinaire en test — Orange
+      Money répond `USER_INVALID`. C'est le chemin direct, avec `payment_type`,
+      qui donne accès au simulateur.
+
+      Ce paiement a trouvé un défaut qu'aucun test contre un faux n'aurait vu :
+      la route d'état rend `{id, status}` **sans montant**, donc un succès en
+      sortait avec `montant: 0` — et `reconcilier` achète du temps avec ce
+      montant. Corrigé en 0.22.1.
 
 - [ ] **lomi.** Le premier adaptateur **écrit après avoir appelé l'API**, et non
       d'après une documentation. Douze vérifications contre le vrai bac à sable,

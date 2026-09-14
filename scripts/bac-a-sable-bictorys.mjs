@@ -12,14 +12,20 @@
  * Ce script vérifie que le registre n'a pas menti, et note où il s'est trompé.
  *
  * ════════════════════════════════════════════════════════════════════════════
- * CE QU'IL NE PEUT PAS ÉPROUVER
+ * IL MÈNE UN PAIEMENT À SON TERME, ET C'EST LE SEUL DU DÉPÔT
  *
- * Personne ne paie. Le bac à sable de Bictorys accepte la charge et rend un
- * lien, mais aucun paiement n'aboutit sans qu'un humain suive ce lien.
+ * Bictorys expose un **simulateur** en bac à sable — `/simulator/v1/` — qui
+ * approuve ou refuse une transaction sans opérateur. Ce script s'en sert, et
+ * constate donc un `succeeded` réel plutôt qu'un `pending` éternel.
  *
- * La moitié du chemin — de l'issue au cycle — reste donc hors de portée, comme
- * pour lomi. La différence est qu'ici le lien existe et répond : il suffit de
- * l'ouvrir pour aller plus loin.
+ * Il a fallu un échec pour le trouver. Le tunnel hébergé route vers les vrais
+ * opérateurs, qui refusent un numéro ordinaire en test : Orange Money a répondu
+ * `USER_INVALID`. C'est le chemin **direct**, avec `payment_type`, qui rend un
+ * lien de simulateur.
+ *
+ * Et ce paiement a trouvé un défaut qu'aucun test contre un faux n'aurait vu :
+ * la route d'état rend `{id, status}` **sans montant**, donc un `REUSSI` en
+ * sortait avec `montant: 0` — et `reconcilier` achète du temps avec ce montant.
  *
  *   BICTORYS_CLE_PUBLIQUE=test_public-… BICTORYS_CLE_PRIVEE=test_secret-… \
  *   node scripts/bac-a-sable-bictorys.mjs
@@ -159,7 +165,79 @@ if (sansId.etat === "EN_ATTENTE" && sansId.identifiantFournisseur === null) {
   verifier("le balayage par référence retrouve la charge", true);
 }
 
-// ── 5. la signature du webhook ────────────────────────────────────────────
+// ── 5. un paiement mené à son terme ───────────────────────────────────────
+console.log("\n▸ Un vrai paiement, par le simulateur");
+console.log("  (le tunnel hébergé route vers les vrais opérateurs, qui refusent");
+console.log("   un numéro ordinaire en bac à sable — « USER_INVALID ». Le chemin");
+console.log("   direct, lui, rend un lien de simulateur.)");
+
+const REF_PAYEE = `${jour}-2-paye${Date.now().toString(36).slice(-5)}`;
+
+// Appel direct plutôt que par l'adaptateur : `inviter` omet délibérément
+// `payment_type` pour laisser l'abonné choisir son opérateur, et c'est ce
+// paramètre qui donne accès au simulateur.
+const creee = await fetch(
+  "https://api.test.bictorys.com/pay/v1/charges?payment_type=wave_money",
+  {
+    method: "POST",
+    headers: { "X-Api-Key": PUBLIQUE, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      amount: 100,
+      currency: "XOF",
+      country: "SN",
+      paymentReference: REF_PAYEE,
+      successRedirectUrl: "https://exemple.ci/ok",
+      errorRedirectUrl: "https://exemple.ci/ko",
+      // Le numéro de test du bac à sable, tiré de leurs propres fixtures. Un
+      // vrai numéro ivoirien est refusé : les opérateurs ne connaissent pas ce
+      // compte en test.
+      customerObject: { name: "Essai Ndank", phone: "221700000001", country: "SN" },
+    }),
+  },
+);
+
+const directe = await creee.json();
+verifier("le chemin direct rend 201", creee.status === 201, String(creee.status));
+verifier(
+  "et un lien de simulateur plutôt qu'un vrai opérateur",
+  typeof directe.link === "string" && directe.link.includes("/simulator/"),
+);
+
+// Le simulateur redirige vers une page d'approbation dont le formulaire poste
+// sur `confirm` ou `cancel`. On confirme.
+await fetch(
+  `https://api.test.bictorys.com/simulator/v1/confirm?transaction_id=${directe.transactionId}`,
+  { method: "POST" },
+);
+
+const paye = await bic.constater(REF_PAYEE, directe.transactionId);
+
+console.log(`  → ${paye.etat}, ${paye.montant} ${paye.devise}, réglé le ${paye.regleLe?.toISOString().slice(0, 10)}`);
+
+verifier("le paiement est constaté REUSSI", paye.etat === "REUSSI", paye.etat);
+
+/**
+ * Le défaut que ce paiement a trouvé, et que rien d'autre n'aurait trouvé.
+ *
+ * `/status` rend `{id, status}` sans montant. Un `REUSSI` à zéro aurait fait
+ * acheter zéro jour à `reconcilier` : l'abonné aurait payé, le fournisseur
+ * l'aurait confirmé, et le cycle n'aurait pas bougé.
+ */
+verifier(
+  "et il porte son montant, que la route d'état ne donne pourtant pas",
+  paye.montant === 100,
+  String(paye.montant),
+);
+verifier("et son horodatage", paye.regleLe !== null);
+
+const parRef = await bic.constater(REF_PAYEE);
+verifier(
+  "le balayage par référence le retrouve aussi",
+  parRef.etat === "REUSSI" && parRef.montant === 100,
+  `${parRef.etat} / ${parRef.montant}`,
+);
+
+// ── 6. la signature du webhook ────────────────────────────────────────────
 console.log("\n▸ Le webhook");
 
 const corps = JSON.stringify({
@@ -228,7 +306,7 @@ verifier(
   ),
 );
 
-// ── 6. l'horodatage qui n'est pas de l'ISO ────────────────────────────────
+// ── 7. l'horodatage qui n'est pas de l'ISO ────────────────────────────────
 console.log("\n▸ L'horodatage");
 
 const lu = lireHorodatage("2026-08-08 18:45:44.10254");
