@@ -558,9 +558,9 @@ const encaissement = fournisseur("flutterwave", {
 });
 ```
 
-Quatre adaptateurs sont branchés — **Flutterwave**, **Paystack**, **MTN MoMo**
-et **lomi.** Quatre autres ont leurs bases posées : **Orange**, **Wave**,
-**Moov** et **Djamo**. Ils déclarent déjà les champs qu'ils attendront, pour qu'un hôte
+Cinq adaptateurs sont branchés — **Flutterwave**, **Paystack**, **MTN MoMo**,
+**lomi.** et **Bictorys**. Quatre autres ont leurs bases posées : **Orange**,
+**Wave**, **Moov** et **Djamo**. Ils déclarent déjà les champs qu'ils attendront, pour qu'un hôte
 puisse ouvrir ses comptes marchands avant que l'adaptateur n'existe — c'est la
 partie longue. En attendant, ils lèvent un message qui dit quoi faire.
 
@@ -1895,7 +1895,7 @@ schéma à un vrai PostgreSQL (Prisma 6.19.3, branche `Ndank-Baobart-Test`).
       est identique avant et après. Le retour arrière est bien celui de
       PostgreSQL.
 
-Restent trois paris, tous à moitié levés.
+Restent quatre paris, tous à moitié levés.
 
 - [ ] **Les passerelles d'envoi.** Cinq sont écrites ; **trois ont émis pour de
       vrai**, et les deux du courriel sont désormais rejouables.
@@ -1950,6 +1950,30 @@ Restent trois paris, tous à moitié levés.
       `npm run bac-a-sable-webhook` le rejoue depuis une capture.
 
       **MTN n'a jamais été appelé.**
+
+- [ ] **Bictorys.** Dix pays — Cameroun et Nigeria compris, là où lomi. s'arrête
+      aux huit de l'UEMOA. Dix-huit vérifications contre le vrai bac à sable, le
+      14 septembre 2026, **zéro échec**.
+
+      ```
+      npm run bac-a-sable-bictorys
+      ```
+
+      C'est le premier adaptateur qui n'a **rien coûté à découvrir** : écrit
+      d'après [`afrotools`](https://github.com/afrotools/afrotools), un registre
+      public qui documente les *pièges* en plus des champs, il a marché au
+      premier appel. Deux réserves sur ce registre : son README annonce que
+      chaque fiche est vérifiée contre l'API réelle, alors que **9 schémas sur
+      157** portent le statut `verified` — mais plusieurs pièges citent des
+      appels réels. Ce sont les pièges qui portent la preuve, pas l'étiquette.
+
+      **Sa signature de webhook est la meilleure des cinq** : HMAC-SHA256 de
+      `horodatage.corps`, donc elle lie le contenu **et** protège du rejeu. Ni
+      Flutterwave, ni Paystack, ni lomi. ne refusent un événement rejoué.
+
+      Deux choses restent non éprouvées : **aucun paiement n'a abouti** — il
+      faut suivre le lien et payer — et le **balayage par référence**, parce que
+      `GET /pay/v1/transactions` rend une liste vide en bac à sable.
 
 - [ ] **lomi.** Le premier adaptateur **écrit après avoir appelé l'API**, et non
       d'après une documentation. Douze vérifications contre le vrai bac à sable,

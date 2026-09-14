@@ -73,6 +73,7 @@ function modules(dossier = join(racine, "src"), prefixe = ""): string[] {
  * couches, et les exporter figerait leur forme.
  */
 const INTERNES = new Set([
+  "encaissement/fournisseurs/bictorys.ts",
   "encaissement/fournisseurs/directs.ts",
   "encaissement/fournisseurs/flutterwave.ts",
   "encaissement/fournisseurs/lomi.ts",

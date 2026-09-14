@@ -1,5 +1,6 @@
 import type { Encaissement, Http } from "./port";
 import { CHAMPS_FLUTTERWAVE, flutterwave } from "./fournisseurs/flutterwave";
+import { CHAMPS_BICTORYS, bictorys } from "./fournisseurs/bictorys";
 import { CHAMPS_LOMI, lomi } from "./fournisseurs/lomi";
 import { CHAMPS_MTN, mtn } from "./fournisseurs/mtn";
 import { CHAMPS_PAYSTACK, paystack } from "./fournisseurs/paystack";
@@ -44,6 +45,7 @@ export type NomFournisseur =
   | "flutterwave"
   | "paystack"
   | "lomi"
+  | "bictorys"
   | "mtn"
   | "orange"
   | "wave"
@@ -58,6 +60,7 @@ export const CHAMPS_REQUIS: Readonly<Record<NomFournisseur, readonly string[]>> 
   flutterwave: CHAMPS_FLUTTERWAVE,
   paystack: CHAMPS_PAYSTACK,
   lomi: CHAMPS_LOMI,
+  bictorys: CHAMPS_BICTORYS,
   mtn: CHAMPS_MTN,
   orange: PAR_NOM["orange"]!.champs,
   wave: PAR_NOM["wave"]!.champs,
@@ -156,6 +159,15 @@ export function fournisseur(
         http,
       });
 
+    case "bictorys":
+      return bictorys({
+        clePublique: s("clePublique"),
+        clePrivee: s("clePrivee"),
+        secretWebhook: s("secretWebhook"),
+        production: identifiants["production"] === true,
+        http,
+      });
+
     case "mtn":
       return mtn({
         utilisateurApi: s("utilisateurApi"),
@@ -187,7 +199,7 @@ export function catalogue(): {
   champs: readonly string[];
   devises: readonly string[];
 }[] {
-  const branches = new Set<NomFournisseur>(["flutterwave", "paystack", "lomi", "mtn"]);
+  const branches = new Set<NomFournisseur>(["flutterwave", "paystack", "lomi", "bictorys", "mtn"]);
 
   return (Object.keys(CHAMPS_REQUIS) as NomFournisseur[]).map((nom) => ({
     nom,

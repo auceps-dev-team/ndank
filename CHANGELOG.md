@@ -6,6 +6,76 @@ le reste.
 
 ---
 
+## 0.22.0
+
+### Ajouté
+
+**Un cinquième adaptateur : Bictorys.** Dix pays d'Afrique de l'Ouest **et
+centrale** — Cameroun et Nigeria compris, là où lomi. s'arrête aux huit de
+l'UEMOA. Quatre devises, et les opérateurs qu'on attend : Wave, Orange Money,
+MTN, Free Money, Moov, Mobicash.
+
+**Il a coûté un appel.** Flutterwave en avait coûté trois versions, Paystack un
+facteur cent sur les montants, lomi. une demi-journée de sondage, la passerelle
+Android quatre tentatives. Celui-ci a marché du premier coup.
+
+La différence n'est pas la chance : c'est
+[`afrotools`](https://github.com/afrotools/afrotools), un registre public de
+spécifications d'API africaines qui documente les **pièges** en plus des
+champs — 157 schémas, 803 pièges, souvent en français. Il annonçait qu'omettre
+`payment_type` rend un `202` avec un lien hébergé plutôt qu'un `201` direct.
+C'est exactement ce qui s'est produit.
+
+Deux réserves sur ce registre, parce qu'elles valent pour la suite. Son README
+affirme que chaque fiche est vérifiée contre l'API réelle ; les fichiers disent
+autre chose — **9 schémas sur 157** portent le statut `verified`, et aucun n'est
+celui-ci. Mais plusieurs pièges citent des appels réels (« *confirmed working
+end-to-end in production* »). **Ce sont les pièges qui portent la preuve, pas
+l'étiquette.**
+
+### Ce que la mesure a ajouté au registre
+
+- **la clé publique passe aussi** sur `GET /transactions/{id}/status`, alors que
+  la fiche affirme que seule la privée fonctionne. On envoie la privée quand
+  même : une permissivité de bac à sable n'est pas une garantie de production ;
+- **le bac à sable rend `{"id": null, …}`** sur cette route. L'adaptateur
+  reprend l'identifiant demandé plutôt que de perdre le fil ;
+- **une route de liste existe** — `GET /pay/v1/transactions` — que le registre
+  ne documente pas. Elle rend une liste vide en bac à sable, donc le balayage
+  par référence est écrit mais **non vérifié**.
+
+### La meilleure signature des cinq
+
+```
+X-Webhook-Signature   HMAC-SHA256 de `horodatage.corps`
+X-Webhook-Timestamp   rejet au-delà de cinq minutes de dérive
+```
+
+Elle lie le contenu **et** protège du rejeu. Aucun autre fournisseur du dépôt ne
+refuse un événement rejoué — ni Flutterwave, dont le `verif-hash` ne lie même
+pas le corps, ni Paystack, ni lomi.
+
+Bictorys envoie aussi un `X-Secret-Key` en clair, qui est exactement le
+`verif-hash` de Flutterwave. On l'accepte en repli, parce que la signature est
+annoncée optionnelle et qu'un compte qui ne la pose pas verrait tous ses
+paiements rejetés — mais le commentaire dit ce qu'il vaut.
+
+### Un horodatage qui n'en est pas un
+
+`"2026-08-08 18:45:44.10254"` : pas de `T`, pas de fuseau. `new Date()` l'accepte
+et l'interprète en **heure locale du serveur** — un serveur à Paris décalerait
+chaque date de deux heures en été, silencieusement. Ndank comptant en jours
+civils UTC, une échéance du 1er à 00h30 deviendrait le 31 du mois précédent.
+
+`lireHorodatage` normalise explicitement plutôt que de laisser faire.
+
+### Ce qui reste hors de portée
+
+**Aucun paiement n'a abouti** : le bac à sable rend un lien, mais il faut le
+suivre et payer. Dix-huit vérifications, zéro échec, une hors de portée.
+
+---
+
 ## 0.21.1
 
 ### Corrigé

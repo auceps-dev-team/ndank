@@ -49,7 +49,7 @@ describe("la configuration d'un fournisseur", () => {
     }
   });
 
-  it("construit les quatre adaptateurs branchés", () => {
+  it("construit les cinq adaptateurs branchés", () => {
     expect(
       fournisseur(
         "flutterwave",
@@ -67,6 +67,18 @@ describe("la configuration d'un fournisseur", () => {
         RIEN,
       ).nom,
     ).toBe("lomi");
+
+    expect(
+      fournisseur(
+        "bictorys",
+        {
+          clePublique: "test_public-x",
+          clePrivee: "test_secret-x",
+          secretWebhook: "s",
+        },
+        RIEN,
+      ).nom,
+    ).toBe("bictorys");
 
     expect(
       fournisseur(
@@ -147,7 +159,7 @@ describe("le catalogue", () => {
     const c = catalogue();
     const branches = c.filter((f) => f.branche).map((f) => f.nom).sort();
 
-    expect(branches).toEqual(["flutterwave", "lomi", "mtn", "paystack"]);
+    expect(branches).toEqual(["bictorys", "flutterwave", "lomi", "mtn", "paystack"]);
   });
 
   it("porte les champs à remplir, pour que l'écran les affiche", () => {
