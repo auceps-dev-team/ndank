@@ -6,6 +6,85 @@ le reste.
 
 ---
 
+## 0.23.0
+
+### Ajouté — `ndank/permissions`
+
+Ce qu'un abonné a le droit de faire, à cet instant. `accesOuvert` répondait déjà
+par oui ou non ; ce module dit **quoi**, et surtout **pourquoi pas**.
+
+```ts
+const verdict = permissionsDe(
+  [{ offreId: "socle", abonnement, libelle: "Pass Créateur" }],
+  { droits: { socle: ["lire", "publier"] }, impaye: "LECTURE" },
+);
+
+peut(verdict, "publier");      // écrire
+peutVoir(verdict, "publier");  // au moins consulter
+```
+
+**Ndank ne sait pas ce qu'est un droit.** « publier », « exporter » sont des mots
+de l'hôte. Une bibliothèque de facturation qui déciderait de ce qu'est un droit
+imposerait son vocabulaire à des produits qu'elle ne connaît pas.
+
+### Trois niveaux, et non un booléen
+
+Un abonné qui cesse de payer a écrit des choses. Lui rendre son propre travail
+invisible le jour où son paiement échoue, c'est le punir d'un incident de carte
+— et c'est le meilleur moyen qu'il ne revienne jamais.
+
+D'où `LECTURE`. Ce n'est pas de la générosité : quelqu'un qui peut encore
+consulter son compte revient le régler.
+
+Le défaut reste `AUCUN`, pour ne pas contredire `accesOuvert` — deux fonctions de
+la même bibliothèque ne doivent pas diverger sur la même question. Passer en
+lecture tient en une ligne.
+
+### Une suspension n'est pas un impayé
+
+`etatDe` rend `SUSPENDUE` dans les deux cas : le marchand a suspendu, ou la grâce
+est épuisée. Le mot est le même ; la situation ne l'est pas du tout.
+
+Le premier est une sanction, posée pour un litige ou un abus. Le second est un
+retard, et l'abonné réglera peut-être demain. Les confondre, c'est infliger à
+quelqu'un dont la carte a expiré ce qu'on réserve à quelqu'un qui a fraudé —
+d'où deux réglages séparés.
+
+### Le motif porte un geste
+
+« Accès refusé » est la phrase qui fait écrire au support : l'abonné ne sait pas
+s'il a oublié de payer, s'il est suspendu, ou si le service est en panne.
+
+> Pass Créateur est suspendu depuis 2 jours. Contactez le service client — une
+> suspension se lève à la main.
+
+Celui-là ne parle pas de paiement, et c'est délibéré : payer ne lèverait rien.
+
+### Ce que les tests ont appris en chemin
+
+« À renouveler **depuis hier** » est **inatteignable**. La grâce dure sept jours :
+au moment où un impayé mord, l'échéance a au moins huit jours. Le test qui
+cherchait cette phrase avait tort, pas le code — et il est maintenant écrit sur
+un cas qui la produit vraiment.
+
+Vingt-six tests. La grâce donne le plein accès, résilier n'est pas confisquer ici
+non plus, les droits de plusieurs abonnements s'additionnent, et une offre
+absente de la table ne donne rien.
+
+### Ajouté — `CONTRIBUTING.md`
+
+Le dépôt n'en avait pas. Il dit surtout une chose : **où nous sommes bloqués, et
+pourquoi nous ne pouvons pas nous débloquer seuls.**
+
+Trois adaptateurs sont écrits et n'ont jamais parlé à leur fournisseur — Twilio,
+Expo, MTN MoMo. Pour chacun : ce qu'il faudrait comme compte, ce qu'il faudrait
+mesurer, et dans quel ordre.
+
+Avec le tableau qui explique pourquoi cela compte — six défauts sérieux, aucun
+trouvé par les huit cents tests, tous trouvés par du réel.
+
+---
+
 ## 0.22.3
 
 ### Corrigé

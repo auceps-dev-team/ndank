@@ -1331,6 +1331,87 @@ Relevé par l'écriture de Ndank App, qui l'a rencontré en montant sa connexion
 abonné.
 
 
+## Les permissions
+
+```ts
+import { permissionsDe, peut, peutVoir } from "ndank/permissions";
+
+const verdict = permissionsDe(
+  [{ offreId: "socle", abonnement, libelle: "Pass Créateur" }],
+  { droits: { socle: ["lire", "publier"] }, impaye: "LECTURE" },
+);
+
+peut(verdict, "publier");      // écrire
+peutVoir(verdict, "publier");  // au moins consulter
+verdict.motif;                 // pourquoi, dit à l'abonné
+```
+
+**Ndank ne sait pas ce qu'est un droit.** « publier », « exporter » sont des mots
+de l'hôte ; la bibliothèque décide seulement lesquels sont encore valables,
+d'après l'état des abonnements. Une offre absente de la table ne donne rien —
+ajouter un palier sans lui donner de droits doit produire un abonné qui ne peut
+rien, pas un abonné qui peut tout.
+
+### Trois niveaux, et non un booléen
+
+`accesOuvert` répond déjà par oui ou non. Ce module existe parce que cette
+question, seule, mène à une cruauté banale : **un abonné qui cesse de payer a
+écrit des choses.** Lui rendre son propre travail invisible le jour où son
+paiement échoue, c'est le punir d'un incident de carte.
+
+D'où `LECTURE` — voir ce qui existe, n'en créer rien de plus. Ce n'est pas de la
+générosité : quelqu'un qui peut encore consulter son compte revient le régler.
+
+Le défaut reste pourtant `AUCUN`, pour rester d'accord avec `accesOuvert` : deux
+fonctions de la même bibliothèque ne doivent pas se contredire sur la même
+question. Passer en lecture tient en une ligne, `{ impaye: "LECTURE" }`.
+
+### La grâce donne le plein accès
+
+`A_RENOUVELER` veut dire « on relance, l'accès tient ». Diminuer les droits à ce
+moment-là viderait la grâce de son sens — elle existe pour que celui qui a passé
+le week-end hors réseau ne perde rien pour deux jours de retard.
+
+Et **résilier n'est pas confisquer**, ici comme ailleurs : un résilié qui a payé
+jusqu'au 30 garde ses droits pleins jusqu'au 30.
+
+### Une suspension n'est pas un impayé
+
+`etatDe` rend `SUSPENDUE` dans les deux cas — le marchand a suspendu, ou la grâce
+est épuisée. Le mot est le même ; la situation ne l'est pas. Le premier est une
+sanction, le second un retard, et l'abonné réglera peut-être demain.
+
+D'où deux réglages séparés, `suspendu` et `impaye`. Les confondre, c'est
+infliger à quelqu'un dont la carte a expiré ce qu'on réserve à quelqu'un qui a
+fraudé.
+
+### Le motif porte un geste
+
+« Accès refusé » est la phrase qui fait écrire au support : l'abonné ne sait pas
+s'il a oublié de payer, s'il est suspendu, ou si le service est en panne.
+
+```
+Pass Créateur est à renouveler depuis 10 jours. Le paiement rouvre l'accès
+immédiatement.
+
+Pass Créateur est suspendu depuis 2 jours. Contactez le service client — une
+suspension se lève à la main.
+```
+
+Le second ne parle pas de paiement, et c'est délibéré : payer ne lèvera pas une
+suspension.
+
+### Plusieurs abonnements s'additionnent
+
+Quelqu'un peut tenir un socle à jour et une option en retard. Ne garder que le
+« meilleur » lui retirerait ce que l'autre lui donne : les droits s'additionnent,
+et un droit accordé en plein par l'un et en lecture par l'autre reste plein.
+
+**Rien n'est stocké.** Comme `etatDe`, tout se déduit à l'instant de la question.
+Une colonne `droits` en base serait fausse le lendemain matin, et personne ne le
+verrait.
+
+
 ## Ce que Ndank ne fait pas
 
 **L'argent ne passe jamais par lui.** Il sait demander un paiement à un
