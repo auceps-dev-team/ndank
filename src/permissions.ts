@@ -121,6 +121,24 @@ export interface ReglagesPermissions {
   suspendu?: Niveau;
 
   /**
+   * Ce qui reste à un résilié dont l'accès payé est terminé.
+   *
+   * `AUCUN`, et il existe séparément de `expire` pour la même raison qui a fait
+   * séparer `suspendu` de `impaye` : **résilier est une décision, laisser
+   * expirer est un oubli.**
+   *
+   * Quelqu'un qui a cliqué « résilier » a dit ce qu'il voulait. Quelqu'un dont
+   * l'abonnement s'est éteint tout seul n'a rien dit du tout — il a peut-être
+   * changé de carte, ou n'a simplement pas vu passer les relances. Le second
+   * mérite qu'on lui garde la porte entrouverte plus longtemps que le premier ;
+   * traiter les deux pareil, c'est renoncer à cette nuance.
+   *
+   * Relevé par la revue de Ndank App, qui a remarqué que le module faisait
+   * cette distinction deux fois et l'oubliait la troisième.
+   */
+  resilie?: Niveau;
+
+  /**
    * Ce qui reste quand la fenêtre de reprise est passée.
    *
    * `AUCUN`. À ce stade, se réabonner recommence à zéro — c'est ce que dit
@@ -167,6 +185,15 @@ export interface Verdict {
    * rien. Sert à nommer la bonne offre dans un écran.
    */
   offreId: string | null;
+
+  /**
+   * Les offres que l'abonné détient, quel que soit leur état.
+   *
+   * Sert à `pourquoiPas` : sans elle, on ne peut pas distinguer « votre palier
+   * n'inclut pas ce droit » de « votre palier l'inclut, mais il n'est pas
+   * payé ». Les deux rendent `false`, et ce ne sont pas les mêmes phrases.
+   */
+  offres: readonly string[];
 }
 
 // ──────────────────────────────────────────────────────────────── le calcul ──
@@ -215,7 +242,7 @@ export function niveauDe(
     // Ce qui a été payé reste dû, jusqu'à la fin de l'accès et pas au-delà.
     return joursEntre(abonnement.cycle.accesJusquA, maintenant) <= 0
       ? "PLEIN"
-      : (reglages.expire ?? "AUCUN");
+      : (reglages.resilie ?? "AUCUN");
   }
 
   if (etat === "ACTIVE" || etat === "A_RENOUVELER") return "PLEIN";
@@ -282,6 +309,7 @@ export function permissionsDe(
         ? null
         : motifDe(recale, porteurs.length, maintenant),
     offreId,
+    offres: porteurs.map((p) => p.offreId),
   };
 }
 
@@ -299,6 +327,74 @@ export function peutVoir(verdict: Verdict, droit: string): boolean {
   return verdict.enLecture.includes(droit);
 }
 
+/**
+ * Pourquoi ce droit-là est refusé. `null` quand il ne l'est pas.
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ * LE MUR QUE `motif` NE COUVRAIT PAS
+ *
+ * `Verdict.motif` explique pourquoi l'**accès** est diminué. Mais `peut()`
+ * répond par droit, et les deux questions ne coïncident pas.
+ *
+ * Un abonné parfaitement à jour à qui l'on demande un droit que son palier ne
+ * comprend pas recevait `false` et `motif: null` — donc rien à lui dire. L'hôte
+ * devait écrire lui-même « passez au palier supérieur », c'est-à-dire
+ * exactement la phrase que ce module prétendait posséder.
+ *
+ * Relevé par la revue de Ndank App, qui a sondé le cas plutôt que de lire le
+ * commentaire qui l'interdisait. Le test qui couvrait cette situation vérifiait
+ * `droits` et `niveau`, jamais `motif` : le trou passait sous les assertions.
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ * TROIS REFUS, TROIS PHRASES
+ *
+ * L'ordre compte, parce que deux causes peuvent valoir en même temps et qu'une
+ * seule mérite d'être dite :
+ *
+ *   1. le droit est consultable mais pas modifiable — c'est le niveau ;
+ *   2. une offre détenue le donnerait, mais son abonnement ne suit pas — c'est
+ *      un problème de **paiement**, et le motif du verdict le dit déjà ;
+ *   3. aucune offre détenue ne le donne — c'est un problème de **palier**, et
+ *      c'est une autre conversation.
+ *
+ * Dire « renouvelez » à quelqu'un dont le palier ne comprend pas la
+ * fonctionnalité l'enverrait payer pour rien.
+ */
+export function pourquoiPas(
+  verdict: Verdict,
+  droit: string,
+  reglages: ReglagesPermissions,
+): string | null {
+  if (peut(verdict, droit)) return null;
+
+  const detenu = verdict.offres.some((o) =>
+    (reglages.droits[o] ?? []).includes(droit),
+  );
+
+  if (peutVoir(verdict, droit)) {
+    return (
+      "Vous pouvez consulter, pas modifier." +
+      (verdict.motif === null ? "" : ` ${verdict.motif}`)
+    );
+  }
+
+  // Une offre qu'il détient le donnerait : c'est donc l'abonnement qui bloque,
+  // et le verdict sait déjà pourquoi.
+  if (detenu && verdict.motif !== null) return verdict.motif;
+
+  // Aucune offre détenue ne le donne. On nomme celles qui le donneraient —
+  // « passez au palier supérieur » sans dire lequel n'aide personne.
+  const ailleurs = Object.entries(reglages.droits)
+    .filter(([id, d]) => d.includes(droit) && !verdict.offres.includes(id))
+    .map(([id]) => id);
+
+  if (ailleurs.length > 0) {
+    return `Votre abonnement ne comprend pas cette fonctionnalité. Elle est incluse dans : ${ailleurs.join(", ")}.`;
+  }
+
+  return "Votre abonnement ne donne pas accès à cette partie du service.";
+}
+
 // ─────────────────────────────────────────────────────────────── le motif ──
 
 /**
@@ -313,11 +409,17 @@ function motifDe(
   combien: number,
   maintenant: Date,
 ): string {
-  if (recale === null) {
-    return combien === 0
-      ? "Vous n'avez aucun abonnement en cours."
-      : "Votre abonnement ne donne pas accès à cette partie du service.";
-  }
+  /**
+   * `recale === null` avec au moins un porteur voudrait dire « tous pleins »,
+   * et l'appelant a déjà court-circuité ce cas à `null`. Il ne reste donc que
+   * l'absence d'abonnement.
+   *
+   * Ce bloc en portait une seconde phrase jusqu'à la 0.23.2 — « votre
+   * abonnement ne donne pas accès à cette partie du service » — **écrite pour
+   * la bonne raison et inatteignable par construction.** Elle vit maintenant
+   * dans `pourquoiPas`, où elle répond à la question qu'elle voulait couvrir.
+   */
+  if (recale === null) return "Vous n'avez aucun abonnement en cours.";
 
   const { porteur, etat } = recale;
   const quoi = porteur.libelle ?? "Votre abonnement";

@@ -6,6 +6,84 @@ le reste.
 
 ---
 
+## 0.23.2
+
+Trois défauts du module de permissions, tous relevés par la revue de Ndank App,
+tous vérifiés exacts avant correction.
+
+### Le mur que le module interdisait restait atteignable
+
+`Verdict.motif` explique pourquoi l'**accès** est diminué. Mais `peut()` répond
+**par droit**, et les deux questions ne coïncident pas.
+
+Un abonné parfaitement à jour, à qui l'on demandait un droit que son palier ne
+comprend pas, recevait `false` et `motif: null` — donc rien à lui dire. L'hôte
+devait écrire lui-même « passez au palier supérieur », c'est-à-dire exactement
+la phrase que le module prétendait posséder, en gras, dans son propre en-tête.
+
+`pourquoiPas(verdict, droit, reglages)` couvre le cas et distingue trois refus :
+
+```
+Vous pouvez consulter, pas modifier.
+Pass Créateur est à renouveler depuis 10 jours. Le paiement rouvre l'accès.
+Votre abonnement ne comprend pas cette fonctionnalité. Elle est incluse dans : option.
+```
+
+L'ordre compte : **dire « renouvelez » à quelqu'un dont le palier ne comprend pas
+la fonctionnalité l'enverrait payer pour rien.**
+
+Le test qui couvrait cette situation vérifiait `droits` et `niveau`, jamais
+`motif`. Le trou passait sous les assertions — il les vérifie maintenant.
+
+### Et la phrase qui l'aurait couvert était morte
+
+`motifDe` portait « Votre abonnement ne donne pas accès à cette partie du
+service. » **Inatteignable par construction** : `recale === null` signifie que
+tous les porteurs sont `PLEIN`, donc `meilleur` vaut `PLEIN`, donc l'appelant a
+déjà court-circuité à `null`. La branche ne se déclenchait que si `combien === 0`
+— qui prend l'autre bras du ternaire.
+
+Écrite exprès, pour la bonne raison, et jamais exécutée. Elle vit maintenant dans
+`pourquoiPas`, où elle répond à la question qu'elle voulait couvrir.
+
+### Résilier n'est pas expirer
+
+Un résilié dont l'accès payé est terminé retombait sur `reglages.expire`. Or
+**résilier est une décision, laisser expirer est un oubli** — la distinction même
+qui avait justifié de séparer `impaye` de `suspendu`.
+
+Quelqu'un qui a cliqué « résilier » a dit ce qu'il voulait. Quelqu'un dont
+l'abonnement s'est éteint tout seul n'a rien dit du tout — il a changé de carte,
+ou n'a pas vu passer les relances.
+
+D'où `resilie`, quatrième réglage. Le module faisait cette distinction deux fois
+et l'oubliait la troisième.
+
+### Un argument remplacé par un meilleur
+
+La 0.23.0 justifiait de garder la table des droits hors d'`Offre` par « ne pas
+mélanger la grille tarifaire et la sémantique ». C'est vrai et faible.
+
+Le vrai départage est le **rythme de changement** : la table des droits bouge
+quand le code bouge, la grille quand le commerce bouge. Les réunir voudrait dire
+qu'un déploiement de code exige une migration de données, et qu'ajouter un palier
+tarifaire exige un développeur.
+
+### Un manque du contrat de projection, noté pendant qu'il est jeune
+
+`Porteur.offreId` attend `Offre.id`, et la projection ne le transporte pas :
+`Projection.offre` est un nom d'affichage, `Projection.reference` l'identifiant
+de l'abonnement. **Un receveur de projections ne peut donc pas indexer la table
+des droits**, où qu'elle vive.
+
+Ce n'est pas un argument pour déplacer les droits — c'est un champ à ajouter le
+jour où un espace abonné voudra dire « ce que votre abonnement vous donne chez ce
+marchand ».
+
+821 tests, 7 nouveaux.
+
+---
+
 ## 0.23.1
 
 ### Retiré — « la signature HMAC de Bictorys n'existe pas »

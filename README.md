@@ -1334,17 +1334,37 @@ abonné.
 ## Les permissions
 
 ```ts
-import { permissionsDe, peut, peutVoir } from "ndank/permissions";
+import { permissionsDe, peut, peutVoir, pourquoiPas } from "ndank/permissions";
 
 const verdict = permissionsDe(
   [{ offreId: "socle", abonnement, libelle: "Pass Créateur" }],
   { droits: { socle: ["lire", "publier"] }, impaye: "LECTURE" },
 );
 
-peut(verdict, "publier");      // écrire
-peutVoir(verdict, "publier");  // au moins consulter
-verdict.motif;                 // pourquoi, dit à l'abonné
+peut(verdict, "publier");                        // écrire
+peutVoir(verdict, "publier");                    // au moins consulter
+pourquoiPas(verdict, "exporter", reglages);      // pourquoi CE droit-là est refusé
+verdict.motif;                                   // pourquoi l'accès est diminué
 ```
+
+### Deux questions, et il faut les deux
+
+`motif` explique pourquoi l'**accès** est diminué. `peut()` répond **par droit**.
+Elles ne coïncident pas, et c'est par là qu'un mur revenait : un abonné
+parfaitement à jour à qui l'on demande un droit que son palier ne comprend pas
+recevait `false` et `motif: null` — donc rien à lui dire.
+
+`pourquoiPas` couvre ce cas, et distingue trois refus qui n'appellent pas la
+même phrase :
+
+```
+Vous pouvez consulter, pas modifier.
+Pass Créateur est à renouveler depuis 10 jours. Le paiement rouvre l'accès.
+Votre abonnement ne comprend pas cette fonctionnalité. Elle est incluse dans : option.
+```
+
+**Dire « renouvelez » à quelqu'un dont le palier ne comprend pas la
+fonctionnalité l'enverrait payer pour rien.**
 
 **Ndank ne sait pas ce qu'est un droit.** « publier », « exporter » sont des mots
 de l'hôte ; la bibliothèque décide seulement lesquels sont encore valables,
@@ -1375,6 +1395,11 @@ le week-end hors réseau ne perde rien pour deux jours de retard.
 Et **résilier n'est pas confisquer**, ici comme ailleurs : un résilié qui a payé
 jusqu'au 30 garde ses droits pleins jusqu'au 30.
 
+### Quatre réglages, parce qu'il y a quatre situations
+
+`impaye`, `suspendu`, `resilie`, `expire` — et chacun existe parce que le
+regrouper effacerait une distinction qui compte pour la personne en face.
+
 ### Une suspension n'est pas un impayé
 
 `etatDe` rend `SUSPENDUE` dans les deux cas — le marchand a suspendu, ou la grâce
@@ -1384,6 +1409,29 @@ sanction, le second un retard, et l'abonné réglera peut-être demain.
 D'où deux réglages séparés, `suspendu` et `impaye`. Les confondre, c'est
 infliger à quelqu'un dont la carte a expiré ce qu'on réserve à quelqu'un qui a
 fraudé.
+
+Et **résilier n'est pas expirer**, pour la même raison d'un cran plus loin :
+résilier est une décision, laisser expirer est un oubli. Quelqu'un qui a cliqué
+« résilier » a dit ce qu'il voulait ; quelqu'un dont l'abonnement s'est éteint
+tout seul n'a rien dit du tout. D'où `resilie`, distinct de `expire` — le module
+faisait cette distinction deux fois et l'oubliait la troisième.
+
+### Où vit la table des droits, et pourquoi pas dans `Offre`
+
+Non pas pour ne pas « mélanger la grille tarifaire et la sémantique » — c'est
+vrai et faible. Le vrai départage est le **rythme de changement** : la table des
+droits bouge quand le code bouge, une fonctionnalité neuve appelant un droit
+neuf ; la grille bouge quand le commerce bouge.
+
+Les réunir voudrait dire qu'un déploiement de code exige une migration de
+données, et qu'ajouter un palier tarifaire exige un développeur.
+
+**Un obstacle à connaître si vous visez l'espace abonné** : `Porteur.offreId`
+attend `Offre.id`, et la projection ne le transporte pas — `Projection.offre`
+est un nom d'affichage, `Projection.reference` l'identifiant de l'abonnement. Un
+receveur de projections ne peut donc pas indexer la table des droits
+aujourd'hui. C'est un champ à ajouter au contrat, pas un argument pour déplacer
+les droits.
 
 ### Le motif porte un geste
 

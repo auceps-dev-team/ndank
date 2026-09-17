@@ -7,6 +7,7 @@ import {
   permissionsDe,
   peut,
   peutVoir,
+  pourquoiPas,
   type Porteur,
   type ReglagesPermissions,
 } from "./permissions";
@@ -178,6 +179,10 @@ describe("les droits, plusieurs abonnements réunis", () => {
 
     expect(v.droits).toEqual([]);
     expect(v.niveau).toBe("PLEIN");
+
+    // Le trou que ce test laissait passer : il vérifiait `droits` et `niveau`,
+    // jamais ce qu'on avait à dire à l'abonné.
+    expect(pourquoiPas(v, "publier", REGLAGES)).not.toBeNull();
   });
 
   it("rend AUCUN et le dit quand il n'y a aucun abonnement", () => {
@@ -292,6 +297,95 @@ describe("le motif", () => {
 
     expect(v.niveau).toBe("PLEIN");
     expect(v.motif).toContain("Option Pro");
+  });
+});
+
+/**
+ * `motif` explique pourquoi l'accès est diminué ; `peut()` répond par droit. Les
+ * deux questions ne coïncident pas, et c'est par là que le mur revenait.
+ */
+describe("pourquoiPas", () => {
+  it("ne dit rien quand le droit est accordé", () => {
+    const v = permissionsDe([porteur("socle", abonnement(20))], REGLAGES, MAINTENANT);
+    expect(pourquoiPas(v, "publier", REGLAGES)).toBeNull();
+  });
+
+  /**
+   * Le cas qui manquait. Un abonné parfaitement à jour, à qui l'on demande un
+   * droit que son palier ne comprend pas, recevait `false` et rien à lui dire.
+   */
+  it("nomme l'offre qui donnerait le droit, plutôt que de se taire", () => {
+    const v = permissionsDe([porteur("socle", abonnement(20))], REGLAGES, MAINTENANT);
+
+    expect(peut(v, "exporter")).toBe(false);
+    expect(v.motif).toBeNull();
+
+    const dit = pourquoiPas(v, "exporter", REGLAGES);
+    expect(dit).toMatch(/ne comprend pas/i);
+    expect(dit).toContain("option");
+  });
+
+  /**
+   * Dire « renouvelez » à quelqu'un dont le palier ne comprend pas la
+   * fonctionnalité l'enverrait payer pour rien.
+   */
+  it("ne renvoie pas vers un paiement quand c'est le palier qui manque", () => {
+    const v = permissionsDe(
+      [porteur("socle", abonnement(20)), porteur("autre", abonnement(-10))],
+      { droits: { socle: ["lire"], autre: ["publier"], option: ["exporter"] } },
+      MAINTENANT,
+    );
+
+    expect(pourquoiPas(v, "exporter", { droits: REGLAGES.droits })).not.toMatch(
+      /renouveler/i,
+    );
+  });
+
+  it("renvoie vers le paiement quand l'offre détenue donnerait le droit", () => {
+    const v = permissionsDe([porteur("socle", abonnement(-10))], REGLAGES, MAINTENANT);
+
+    expect(pourquoiPas(v, "publier", REGLAGES)).toMatch(/renouveler/i);
+  });
+
+  it("distingue « consultable » de « refusé »", () => {
+    const v = permissionsDe(
+      [porteur("socle", abonnement(-10))],
+      { ...REGLAGES, impaye: "LECTURE" },
+      MAINTENANT,
+    );
+
+    expect(pourquoiPas(v, "publier", REGLAGES)).toMatch(/consulter, pas modifier/i);
+  });
+
+  /**
+   * La phrase qui vivait dans `motifDe` et n'y était jamais atteinte. Elle se
+   * déclenche ici : aucune offre, détenue ou non, ne donne ce droit.
+   */
+  it("le dit aussi quand aucune offre ne donne ce droit", () => {
+    const v = permissionsDe([porteur("socle", abonnement(20))], REGLAGES, MAINTENANT);
+
+    expect(pourquoiPas(v, "droit-qui-n-existe-pas", REGLAGES)).toMatch(
+      /ne donne pas accès/i,
+    );
+  });
+});
+
+/**
+ * Résilier est une décision, laisser expirer est un oubli — la même distinction
+ * qui a justifié de séparer `impaye` de `suspendu`.
+ */
+describe("résilier n'est pas expirer", () => {
+  it("emploie `resilie` et non `expire` pour un résilié dont l'accès est fini", () => {
+    const resilie = abonnement(-20, { resilieeLe: ajouterJours(MAINTENANT, -25) });
+
+    expect(
+      niveauDe(porteur("socle", resilie), { ...REGLAGES, resilie: "LECTURE" }, MAINTENANT),
+    ).toBe("LECTURE");
+
+    // `expire` ne doit pas décider à sa place.
+    expect(
+      niveauDe(porteur("socle", resilie), { ...REGLAGES, expire: "LECTURE" }, MAINTENANT),
+    ).toBe("AUCUN");
   });
 });
 
