@@ -6,6 +6,68 @@ le reste.
 
 ---
 
+## 0.23.1
+
+### Retiré — « la signature HMAC de Bictorys n'existe pas »
+
+Elle existe. La 0.22.2 disait qu'elle « n'arrive pas », la 0.22.3 qu'elle
+« n'existe pas », et **les deux avaient tort**.
+
+`docs.bictorys.com/docs/intégration-en`, mis à jour en mars 2026, la documente :
+
+```
+X-Webhook-Signature: <hmac_sha256_hex>       # optional (if HMAC enabled)
+X-Webhook-Timestamp: <unix_timestamp_ms>     # optional (if HMAC enabled)
+```
+
+Même `HMAC-SHA256(secret, "${timestamp}.${rawBody}")`, même fenêtre de cinq
+minutes, même comparaison en temps constant — exactement ce que la fiche
+`afrotools` annonçait, et que nous avions qualifié d'inventé.
+
+**Elle est désactivée par défaut, compte par compte.** Voilà pourquoi la capture
+du 14 septembre n'en montrait rien.
+
+### Comment l'erreur s'est produite
+
+Elle mérite d'être nommée, parce que c'est celle qu'on reprochait aux autres.
+
+Une page lue — `how-to-validate-webhooks`, qui ne mentionne effectivement rien.
+Une mesure prise — six en-têtes, aucune signature. Et une conclusion tirée de
+**leur intersection** plutôt que de l'ensemble. La page `intégration-en` était
+dans l'index ; elle a été sautée, prise pour un doublon d'`intégration`.
+
+> « La documentation n'en parle pas » n'a jamais voulu dire « la documentation
+> que j'ai lue n'en parle pas ».
+
+Relevé par la revue de [afrotools#67](https://github.com/afrotools/afrotools/pull/67),
+avec ses sources. La contribution a été amendée : la fiche d'origine est
+restaurée telle quelle, et nous n'y ajoutons plus qu'une ligne — le couple est
+**gated par compte**, donc n'attendez pas la signature.
+
+### `expired` reste, mais sa justification tombe
+
+La traduction `expired → EXPIRE` est gardée : elle ne coûte rien, et un état
+inconnu est pire qu'un état traduit.
+
+Mais **la source ne tient pas**. Le seuil des deux heures venait d'une page
+datée « il y a presque deux ans », qui montre une enveloppe de webhook que l'API
+n'envoie plus. Le guide à jour liste `succeeded · failed · cancelled ·
+authorized · reversed`, sans `expired`.
+
+Le détail qui aurait dû alerter était sous les yeux : la 0.22.3 relevait cette
+incohérence d'enveloppe comme un défaut de la documentation — puis traitait la
+même page comme une autorité trois lignes plus bas. **Une page périmée dans un
+paragraphe ne redevient pas fraîche au suivant.**
+
+### Ce qui ne change pas
+
+Le code. Il préférait déjà le HMAC quand il arrive et retombait sur le secret
+partagé sinon — la bonne forme, pour une mauvaise raison. Et la conséquence
+pratique est identique : sur un compte où la signature n'est pas activée, c'est
+le repli qui tourne en production, et c'est la réconciliation qui protège.
+
+---
+
 ## 0.23.0
 
 ### Ajouté — `ndank/permissions`

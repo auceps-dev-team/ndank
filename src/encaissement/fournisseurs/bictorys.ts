@@ -140,20 +140,22 @@ export const CHAMPS_BICTORYS = [
  * `reversed` devient `ECHOUE` : un paiement repris n'achète pas de temps.
  *
  * ════════════════════════════════════════════════════════════════════════════
- * `expired`, ET LES DEUX HEURES QU'IL FAUT CONNAÎTRE
+ * `expired` EST GARDÉ PAR PRUDENCE, ET NON SUR PREUVE
  *
- * Ce cas manquait jusqu'à la 0.22.3 — il tombait dans `INCONNU`, et l'on ne
- * concluait donc rien d'une charge pourtant close. Trouvé en lisant la
- * documentation officielle, qui donne au passage le seuil :
+ * Ce cas tombait dans `INCONNU` jusqu'à la 0.22.3, et on ne concluait donc rien
+ * d'une charge peut-être close. La traduction reste — elle ne coûte rien et un
+ * état inconnu est pire qu'un état traduit.
  *
- *   « Une transaction est automatiquement considérée comme "expirée" si elle
- *     est en attente depuis plus de **deux heures**. »
+ * Mais **la source ne tient pas**, et il faut le dire plutôt que de laisser
+ * croire. Elle venait d'une page datée « il y a presque deux ans », qui montre
+ * une enveloppe de webhook — `{"event": "charge.successful"}`, statut
+ * « réussi » en français — que l'API n'envoie plus. Le guide à jour liste
+ * `succeeded · failed · cancelled · authorized · reversed`, sans `expired`.
  *
- * C'est court, et cela vaut d'être su : une charge créée le soir est morte le
- * lendemain matin. Le lien de relance de Ndank, lui, vit quinze jours et fait
- * naître une charge neuve à chaque ouverture de page — l'abonné ne rencontre
- * donc jamais cette expiration. Un hôte qui garderait une charge d'un cycle sur
- * l'autre, si.
+ * Le détail qui aurait dû alerter était sous les yeux : cette incohérence
+ * d'enveloppe avait été relevée en 0.22.3 comme un défaut de la documentation,
+ * puis la même page avait servi d'autorité trois lignes plus bas. Une page
+ * périmée dans un paragraphe ne redevient pas fraîche au suivant.
  */
 function etatDepuis(statut: string | undefined): EtatEncaissement {
   switch ((statut ?? "").toLowerCase()) {
@@ -505,13 +507,28 @@ export function bictorys(config: ConfigBictorys): Encaissement {
      *     renseignée sur votre dashboard. Vous devez vérifier que la clé
      *     secrète envoyée correspond à la clé secrète enregistrée. »
      *
-     * Elle ne mentionne **ni HMAC, ni signature, ni horodatage**, nulle part.
-     * Le couple `X-Webhook-Signature` / `X-Webhook-Timestamp` que décrit
-     * `afrotools` — avec une précision qui inspire confiance, jusqu'à la
-     * tolérance de dérive en millisecondes — **n'existe pas chez Bictorys**.
+     * Cette page-là ne mentionne ni HMAC ni horodatage. **Mais une autre le
+     * fait**, et ce module a affirmé le contraire jusqu'à la 0.22.4.
      *
-     * Le code qui le vérifie reste : il ne coûte rien, et il servira si
-     * Bictorys l'ajoute un jour. Mais on ne compte pas dessus.
+     * `docs.bictorys.com/docs/intégration-en`, mis à jour en mars 2026,
+     * documente exactement le couple que décrit `afrotools` :
+     *
+     *   X-Webhook-Signature: <hmac_sha256_hex>       # optional (if HMAC enabled)
+     *   X-Webhook-Timestamp: <unix_timestamp_ms>     # optional (if HMAC enabled)
+     *
+     * Même formule, même fenêtre de cinq minutes, même comparaison en temps
+     * constant. **Le mécanisme existe : il est simplement désactivé par
+     * défaut, compte par compte.**
+     *
+     * L'erreur mérite d'être nommée, parce que c'est celle qu'on reproche aux
+     * autres : une page lue, une mesure prise, et une conclusion tirée de leur
+     * intersection plutôt que de l'ensemble. « La documentation n'en parle
+     * pas » n'a jamais voulu dire « la documentation que j'ai lue n'en parle
+     * pas ». Relevé par la revue de la PR afrotools#67.
+     *
+     * Conséquence pratique, et elle ne change pas : **n'attendez pas la
+     * signature.** Sur un compte où elle n'est pas activée, c'est le repli qui
+     * tourne en production, et c'est la réconciliation qui protège.
      *
      * Ce paragraphe a donc affirmé le contraire jusqu'à la 0.22.2 — « la
      * meilleure des cinq passerelles » — sur la foi d'une fiche. **En pratique,
