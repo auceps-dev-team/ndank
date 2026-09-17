@@ -6,6 +6,53 @@ le reste.
 
 ---
 
+## 0.24.2
+
+### Documenté — un receveur ne doit rendre aucun champ obligatoire
+
+Les hôtes ne montent pas de version en même temps. `offreId` est arrivé en
+0.24 : un hôte resté en 0.23 ne l'envoie tout simplement pas.
+
+`Projection.offreId` est déclaré `string | null` — requis et nullable en
+TypeScript, parce que c'est ce qu'un receveur veut lire. **Mais sur le fil, la
+clé est absente**, et ce ne sont pas les mêmes choses.
+
+Un schéma d'entrée qui exigerait la clé refuserait la poussée de tout hôte en
+retard. Et le refus est silencieux du mauvais côté : **l'hôte voit un 400 sans
+savoir ce qui a changé**, puisque rien n'a changé chez lui.
+
+La forme qui tient les deux :
+
+```ts
+offreId: z.string().nullable().default(null)
+```
+
+`default` sépare le type d'entrée du type de sortie : facultatif sur le fil,
+`string | null` après analyse. Permissif à l'exécution, strict à la compilation.
+
+La règle vaut pour tout champ qu'on ajoutera ensuite. Relevé par Ndank App en
+posant la colonne, **avant** que le piège ne se referme — c'est la bonne moitié
+de l'histoire.
+
+Aucune migration n'est nécessaire : les lignes déjà reçues restent à `null`
+jusqu'à la prochaine poussée de chaque hôte.
+
+### Une vérification qui n'a rien trouvé, et qui méritait d'être faite
+
+Ndank App a écrit un test contre un `ON CONFLICT DO UPDATE` qui énumère ses
+colonnes une par une : **une colonne oubliée là ne lève aucune erreur, elle
+reste figée à sa première valeur.** C'est exactement la forme du succès
+silencieux que la 0.22.1 avait rencontrée ailleurs.
+
+Les trois `upsert` de l'adaptateur Prisma ont été relus. Tous portent
+`update: {}` avec sa raison écrite — la première écriture fait foi, parce que
+réécrire ferait bouger un montant déjà compté, ou ferait croire à un second
+envoi qui n'a pas eu lieu.
+
+**Ndank n'a pas ce piège**, et le dire vaut mieux que de le supposer.
+
+---
+
 ## 0.24.1
 
 ### Corrigé — `offreId` n'était pas dans le paquet

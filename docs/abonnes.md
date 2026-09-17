@@ -75,6 +75,38 @@ Et l'on ne peut pas deviner l'indicatif manquant : `+225` est une hypothèse qui
 l'air raisonnable jusqu'au premier abonné sénégalais. L'hôte, lui, sait le sien,
 et il a déjà `enE164`.
 
+## Un receveur ne doit rendre aucun champ obligatoire
+
+Les hôtes ne montent pas de version en même temps. Un champ ajouté au contrat —
+`offreId` est arrivé en 0.24 — n'est simplement **pas dans le corps** que pousse
+un hôte resté en 0.23.
+
+`Projection.offreId` est déclaré `string | null` : requis et nullable en
+TypeScript, parce que c'est ce qu'un receveur veut lire. Mais **sur le fil, la
+clé est absente**, et ce ne sont pas les mêmes choses.
+
+Un schéma d'entrée qui exigerait la clé refuserait donc la poussée de tout hôte
+en retard. Et le refus est silencieux du mauvais côté : **l'hôte voit un 400
+sans savoir ce qui a changé**, puisque rien n'a changé chez lui.
+
+La forme qui tient les deux, avec zod :
+
+```ts
+offreId: z.string().nullable().default(null)
+```
+
+`default` sépare le type d'entrée du type de sortie : facultatif sur le fil,
+`string | null` après analyse — donc un contrôle d'égalité de types entre le
+corps reçu et `Projection` reste satisfait. Permissif à l'exécution, strict à la
+compilation.
+
+La règle vaut pour tout champ qu'on ajoutera ensuite, pas seulement celui-là.
+Relevé par Ndank App en posant `offreId`, avant que le piège ne se referme.
+
+**Et aucune migration n'est nécessaire** : les lignes déjà reçues restent à
+`null` jusqu'à la prochaine poussée de chaque hôte. La projection se rafraîchit
+d'elle-même.
+
 # Le code SMS
 
 ```ts
