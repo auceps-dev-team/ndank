@@ -17,6 +17,7 @@ function ligne(sur: Partial<Projection> = {}): Projection {
     empreinte: empreinte("+2250700000000", POIVRE),
     site: "Baobart",
     offre: "Pass Créateur",
+    offreId: "socle",
     montant: 2000,
     devise: "XOF",
     cadence: "MENSUEL",
@@ -236,6 +237,30 @@ describe("faire une carte à partir d'un abonnement", () => {
   };
 
   const reglages = { site: "Baobart", poivre: POIVRE };
+
+  /**
+   * `offre` est un libellé d'affichage — il change quand le marketing change, et
+   * deux hôtes peuvent employer le même mot pour des paliers différents. On ne
+   * peut rien indexer dessus.
+   *
+   * `offreId` est la clé, et c'est elle que `ndank/permissions` attend en
+   * `Porteur.offreId`. Sans elle, « à quoi ai-je droit chez ce marchand ? » est
+   * sans réponse de l'autre côté — ce qu'a constaté l'espace abonné de Ndank
+   * App en cherchant le champ et en ne le trouvant pas.
+   */
+  it("transporte l'identifiant de l'offre, distinct de son libellé", () => {
+    const p = projectionDe({ ...abonnement, offreId: "socle" }, reglages, maintenant);
+
+    expect(p?.offre).toBe("Pass Créateur");
+    expect(p?.offreId).toBe("socle");
+  });
+
+  it("rend null quand l'hôte ne le fournit pas, sans rien casser d'autre", () => {
+    const p = projectionDe(abonnement, reglages, maintenant);
+
+    expect(p?.offreId).toBeNull();
+    expect(p?.reference).toBe("abo-1");
+  });
 
   it("identifie par le numéro quand il y en a un", () => {
     // C'est par lui que l'abonné se connectera à Ndank App.

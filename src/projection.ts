@@ -54,8 +54,35 @@ export interface Projection {
 
   /** Le nom du service, tel que l'abonné le reconnaît. */
   site: string;
-  /** Le nom de l'offre. */
+  /** Le nom de l'offre, tel que l'abonné le lit. */
   offre: string;
+
+  /**
+   * L'identifiant de l'offre chez l'hôte — `Offre.id`, et non `offre`.
+   *
+   * ══════════════════════════════════════════════════════════════════════════
+   * POURQUOI UN SECOND CHAMP POUR LA MÊME CHOSE
+   *
+   * `offre` est un **libellé d'affichage** : « Pass Créateur ». Il change quand
+   * le marketing change, et deux hôtes peuvent employer le même mot pour des
+   * paliers différents. On ne peut donc rien indexer dessus.
+   *
+   * `offreId` est la clé. Elle sert à une chose précise : un receveur de
+   * projections qui veut dire **ce que cet abonnement donne** doit pouvoir
+   * chercher dans une table de droits — `ndank/permissions` prend exactement
+   * cet identifiant en `Porteur.offreId`.
+   *
+   * Sans ce champ, la question « à quoi ai-je droit chez ce marchand ? » est
+   * sans réponse de l'autre côté, quelle que soit la façon dont on s'y prend.
+   *
+   * `null` quand l'hôte ne le fournit pas : le champ est arrivé après le
+   * contrat, et une projection sans lui reste parfaitement valide — elle ne
+   * permet simplement pas de parler de droits.
+   *
+   * Relevé par l'écriture de l'espace abonné de Ndank App, qui en avait besoin
+   * et ne l'a pas trouvé. Noté pendant que le contrat est jeune.
+   */
+  offreId: string | null;
 
   montant: number;
   devise: string;
@@ -242,6 +269,8 @@ export function aProjeter(
 export interface AProjeter {
   id: string;
   libelle: string;
+  /** `Offre.id`. Facultatif : voir `Projection.offreId`. */
+  offreId?: string | null;
   montant: number;
   devise: string;
   cadence: Cadence;
@@ -307,6 +336,7 @@ export function projectionDe(
     empreinte: empreinte(identifiant, reglages.poivre),
     site: reglages.site,
     offre: abonnement.libelle,
+    offreId: abonnement.offreId ?? null,
     montant: abonnement.montant,
     devise: abonnement.devise,
     cadence: abonnement.cadence,

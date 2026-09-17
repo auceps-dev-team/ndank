@@ -6,6 +6,64 @@ le reste.
 
 ---
 
+## 0.24.0
+
+### Ajouté — `Projection.offreId`
+
+`offre` est un **libellé d'affichage** : « Pass Créateur ». Il change quand le
+marketing change, et deux hôtes peuvent employer le même mot pour des paliers
+différents. On ne peut rien indexer dessus.
+
+`offreId` est la clé, et c'est elle que `ndank/permissions` attend en
+`Porteur.offreId`. Sans elle, la question « à quoi ai-je droit chez ce
+marchand ? » restait **sans réponse de l'autre côté**, quelle que soit la façon
+dont on s'y prenait.
+
+Facultatif en entrée (`AProjeter.offreId?`), nullable en sortie : le champ est
+arrivé après le contrat, et une projection sans lui reste parfaitement valide —
+elle ne permet simplement pas de parler de droits.
+
+Relevé par l'écriture de l'espace abonné de Ndank App, qui en avait besoin et ne
+l'a pas trouvé. Noté pendant que le contrat est jeune.
+
+### Le README passe de 2 315 à 204 lignes
+
+Il en faisait **106 Ko**. Le retour venait du développeur d'afrotools : trop de
+détail sur une seule page, et il avait raison — une page de deux mille lignes ne
+se lit pas, elle se parcourt.
+
+Ce qui reste : ce qu'est Ndank, pourquoi il existe, ce qu'il ne fait pas, et un
+état honnête de ce qui est éprouvé. Le reste vit dans `docs/`, une page par
+sujet :
+
+| | |
+|---|---|
+| `docs/demarrer.md` | installer, déclarer ce qu'on vend, faire naître un abonnement |
+| `docs/relances.md` | l'échelle, les pièges de la rédaction |
+| `docs/sms.md` | ce qu'un SMS coûte vraiment ici, et la file |
+| `docs/encaissement.md` | les cinq temps, le lien signé, les webhooks |
+| `docs/tableau-de-bord.md` | ce qu'un marchand lit, et les cinq gestes |
+| `docs/sante.md` | le battement, et ce que la santé ne dit pas |
+| `docs/abonnes.md` | la vue multi-sites, le code SMS, les permissions |
+| `docs/eprouve.md` | la liste des paris |
+
+Aucun texte n'a été supprimé : tout a déménagé. Les deux ancrages internes qui
+pointaient vers des sections déplacées ont été réécrits, et chaque lien du README
+a été vérifié contre un fichier réel.
+
+### Une reconstruction qui manquait
+
+`dist/permissions.js` n'existait pas. Le sous-chemin était déclaré dans
+`exports`, la source datait du 17, la compilation du 14 — et
+`import("ndank/permissions")` rendait `ERR_MODULE_NOT_FOUND`.
+
+`dist/` est ignoré par git : **pousser trois versions ne les livre donc à
+personne.** Un consommateur en `file:../ndank` lit le paquet construit, pas la
+source. Mesuré et signalé par Ndank App, qui a comparé les dates plutôt que les
+numéros de version — ce qui est exactement la bonne façon de s'en apercevoir.
+
+---
+
 ## 0.23.2
 
 Trois défauts du module de permissions, tous relevés par la revue de Ndank App,
