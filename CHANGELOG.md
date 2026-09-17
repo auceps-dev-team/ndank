@@ -6,6 +6,61 @@ le reste.
 
 ---
 
+## 0.24.1
+
+### Corrigé — `offreId` n'était pas dans le paquet
+
+La 0.24.0 annonçait `Projection.offreId` livré. Il ne l'était pas :
+
+```
+dist/projection.js   11:03:43   ← la reconstruction
+src/projection.ts    11:05:32   ← l'édition, deux minutes après
+```
+
+J'avais reconstruit, **puis** modifié la source, puis commité. Reconstruit.
+
+### Ajouté — `npm run livrable`
+
+Deux incidents en deux jours, même cause. Un garde-fou vaut mieux qu'une règle
+qu'on oublie.
+
+Le script compare la date de la source la plus récente à celle de la sortie la
+plus récente, et refuse quand le paquet est en retard. Il reproduit l'incident
+exactement quand on le provoque.
+
+**Pourquoi rien d'autre ne l'attrapait :**
+
+| | |
+|---|---|
+| `tsc --noEmit` | lit la **source** — vert |
+| les tests | importent par chemins relatifs, jamais par `package.json` — verts |
+| `dist/` | est dans `.gitignore` — le diff ne montre rien |
+| `epreuve-paquet.mjs` | emballe le `dist` tel qu'il est — un `dist` périmé s'installe parfaitement |
+| le typecheck **du consommateur** | compare son code à un `.d.ts` où le champ n'existe pas — vert aussi |
+
+Cinq voyants au vert, et un champ qui n'arrive nulle part.
+
+`prepack` construit désormais avant tout emballage — gratuit et correct, même
+si cela ne couvre pas le cas qui a mordu : un consommateur en `file:` ne passe
+par aucun emballage.
+
+### Ce que cet incident apprend
+
+`npm run verifier` finit par `build`. Il suffisait donc qu'il soit le **dernier**
+geste — et il ne l'était pas. Le piège ne se referme que quand on reconstruit
+puis qu'on modifie encore.
+
+Et la leçon générale, notée aussi côté Ndank App : **la portée d'un garde-fou
+fait partie du garde-fou.** Un contrôle muet ne veut pas dire « rien n'a
+changé », il veut dire « rien n'a changé dans ce que je regarde ».
+
+Mesuré et signalé par Ndank App, qui a vérifié en passant `offreId: "socle"` à
+`projectionDe` depuis le paquet construit plutôt qu'en cherchant la chaîne dans
+un fichier. C'est la bonne méthode, et c'est celle employée pour confirmer la
+correction.
+
+---
+
 ## 0.24.0
 
 ### Ajouté — `Projection.offreId`

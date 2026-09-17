@@ -171,7 +171,19 @@ fournisseur comme référence si besoin.
 
 ```sh
 npm run verifier      # typecheck, tests, build
+npm run livrable      # le `dist` est-il plus vieux que la source ?
 ```
+
+**La seconde commande mérite un mot**, parce que son absence a coûté deux
+incidents en deux jours. `dist/` est dans `.gitignore`, les tests importent par
+chemins relatifs, et `tsc --noEmit` lit la source : **on peut donc avoir quatre
+voyants au vert et un paquet en retard.** Un consommateur en `file:../ndank` lit
+le paquet construit — son propre typecheck restera vert lui aussi, puisqu'il
+compare son code à un `.d.ts` où votre champ n'existe pas encore.
+
+`npm run verifier` finit par `build`, donc il suffit qu'il soit le **dernier**
+geste. C'est quand on reconstruit puis qu'on modifie encore que le piège se
+referme.
 
 Une remarque sur les tests, si vous travaillez sur plusieurs projets Node à la
 fois : **Vitest lance un processus par cœur.** Deux suites en parallèle ne se

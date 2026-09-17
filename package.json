@@ -1,6 +1,6 @@
 {
   "name": "ndank",
-  "version": "0.24.0",
+  "version": "0.24.1",
   "description": "Abonnements par mobile money, sans carte bancaire.",
   "type": "module",
   "main": "./dist/moteur.cjs",
@@ -499,6 +499,8 @@
     "typecheck": "tsc --noEmit",
     "schema": "prisma validate --schema prisma/schema.prisma",
     "verifier": "npm run typecheck && npm run test && npm run build",
+    "livrable": "node scripts/dist-a-jour.mjs",
+    "prepack": "npm run build",
     "prepublishOnly": "npm run verifier",
     "bac-a-sable": "npm run build && node scripts/bac-a-sable.mjs",
     "apercu": "npm run build && node scripts/apercu.mjs",
