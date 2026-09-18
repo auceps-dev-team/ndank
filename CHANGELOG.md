@@ -6,6 +6,62 @@ le reste.
 
 ---
 
+## 0.24.4
+
+### Retiré — « `reconcilier` achète du temps avec ce montant » était faux
+
+Trois fichiers l'affirmaient depuis la 0.22.1 : le commentaire de l'adaptateur
+Bictorys, son test, et la page des paris. Un quatrième, `CONTRIBUTING.md`,
+ajoutait « sans aucune erreur ».
+
+**`reconcilier` refuse un montant nul depuis la 0.3.0** — `fb7959f`, le
+3 septembre 2026, soit onze jours **avant** le paiement Bictorys qui a servi de
+preuve :
+
+```ts
+if (issue.montant <= 0) {
+  return { faire: "INCIDENT", motif: `Montant nul ou négatif sur ${issue.reference} : ${issue.montant}.` };
+}
+```
+
+Et `intervention.ts` traduit cet `INCIDENT` en `REFUSE` motivé.
+
+Le défaut d'origine était réel, et son correctif reste juste : la route d'état
+de Bictorys rend `succeeded` sans montant, et il faut compléter par la liste.
+**C'est la conséquence qui était mal racontée.** Elle n'était pas « un crédit
+silencieux de zéro jour » mais **un abonné qui a payé et qui se fait refuser**,
+dont l'accès ne rouvre pas tant que personne ne traite l'incident. Aussi cassé,
+nettement plus visible.
+
+### Pourquoi l'affirmation a tenu onze jours
+
+**La garde de `reconcilier` n'avait aucun test.**
+
+Ce dépôt répète qu'un faux qu'on écrit soi-même ne dément jamais son auteur. Le
+cas est plus simple encore : **un test absent non plus.** Rien ne pouvait
+contredire le commentaire, donc il a été recopié — d'abord dans le test de
+l'adaptateur, puis dans la page de relevé, puis dans un tableau.
+
+`reconciliation.test.ts` porte maintenant le test manquant. Il ne couvre pas un
+cas rare : il couvre la phrase que trois fichiers avaient écrite à l'envers.
+
+```
+✓ refuse un succès sans montant, et ne crédite donc aucun jour
+```
+
+### Ce que la recherche a écarté en chemin
+
+Deux pistes ouvertes et refermées, pour qu'on ne les rouvre pas :
+
+- **MTN porte le même `Number(lu["amount"] ?? 0)` sans garde d'adaptateur.** Ce
+  n'est pas un trou : la garde systémique est dans `reconcilier`, au bon niveau.
+- **La page annonce « votre accès est prolongé » avant de connaître le verdict
+  de l'hôte.** C'est structurel — `SurIssue` rend `Promise<void>`, la page ne
+  *peut* pas savoir — et le message est déjà prudent (« laissez-lui une
+  minute »). Découplage assumé, pas oubli.
+
+---
+
 ## 0.24.3
 
 ### Corrigé — la page qui dit ce qui est éprouvé surestimait ce qui l'est

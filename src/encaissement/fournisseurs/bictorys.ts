@@ -443,13 +443,25 @@ export function bictorys(config: ConfigBictorys): Encaissement {
          *     /transactions  → … "amount": 100.0, "timestamp": "…"
          *
          * La route d'état ne rend **ni montant ni horodatage**. Un `REUSSI`
-         * en sortirait donc avec `montant: 0` — et `reconcilier` achète du
-         * temps avec ce montant. L'abonné aurait payé, le fournisseur
-         * l'aurait confirmé, et le cycle n'aurait pas avancé d'un jour.
+         * en sortirait donc avec `montant: 0`.
          *
-         * Aucun test contre un faux n'aurait trouvé cela : c'est celui qui
-         * écrit le faux qui décide de ce que la réponse contient, et il y met
-         * naturellement un montant.
+         * ─── CE PARAGRAPHE A DIT PLUS QUE LE VRAI JUSQU'À LA 0.24.4 ───
+         *
+         * Il affirmait que « `reconcilier` achète du temps avec ce montant »,
+         * et ailleurs que le cycle n'avançait pas « sans aucune erreur ».
+         * C'est faux. `reconcilier` refuse un montant nul **depuis la 0.3.0**
+         * (fb7959f, 3 septembre 2026) et rend un `INCIDENT`, que
+         * `intervention.ts` traduit en `REFUSE` motivé.
+         *
+         * La conséquence réelle est moins discrète, et pas moins grave :
+         * **un abonné qui a payé se fait refuser**, et son accès ne rouvre
+         * pas tant que personne ne traite l'incident à la main.
+         *
+         * Aucun test contre un faux n'aurait trouvé le défaut d'origine :
+         * c'est celui qui écrit le faux qui décide de ce que la réponse
+         * contient, et il y met naturellement un montant. Et rien n'aurait
+         * démenti ce paragraphe non plus — la garde de `reconcilier` n'avait
+         * aucun test. `reconciliation.test.ts` en porte un depuis la 0.24.4.
          *
          * On complète donc par la liste quand le succès arrive sans montant.
          * Un appel de plus, seulement dans ce cas, et seulement au moment où

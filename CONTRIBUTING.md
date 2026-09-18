@@ -33,8 +33,9 @@ défauts sérieux de son histoire a été trouvé ailleurs :
 | Une vraie boîte Gmail | deux relances portaient le même sujet ; SPF et DMARC absents |
 | Un vrai téléphone Android | la raison d'un échec, jetée ; le mode local visait le mauvais chemin |
 | Un vrai webhook | la signature de Flutterwave n'authentifie pas le corps |
-| Un vrai paiement Bictorys | un succès sans montant — le cycle n'aurait pas avancé, sans aucune erreur |
+| Un vrai paiement Bictorys | un succès sans montant : l'abonné payait, et se faisait refuser |
 | Une relecture extérieure | un champ `debut` qui mourait à la frontière du routeur |
+| Un test qui manquait | trois fichiers affirmaient le contraire de ce que `reconcilier` fait |
 
 D'où la distinction que ce dépôt tient partout : ce qui est **écrit** et ce qui
 est **éprouvé**. Le `README` porte une liste de paris non levés, et tant qu'elle

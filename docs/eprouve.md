@@ -11,9 +11,10 @@
 **Le paquet n'est pas publié sur npm, et il ne le sera pas avant que cette liste
 soit vide.**
 
-823 tests passent — mesuré le 18 septembre 2026, 39 fichiers, zéro échec. Ils
+824 tests passent — mesuré le 18 septembre 2026, 39 fichiers, zéro échec. Ils
 tournent presque tous contre des faux que j'ai écrits — et un faux ne dément
-jamais son auteur. Chaque ligne non cochée est un pari.
+jamais son auteur. **Un test absent non plus** : voir ce que la 0.24.4 a dû
+retirer. Chaque ligne non cochée est un pari.
 
 **Quatre l'ont été le 4 septembre 2026**, en installant `ndank` dans
 [Baobart](https://github.com/auceps-dev-team/Baobart) et en appliquant son
@@ -144,8 +145,22 @@ Restent quatre paris, tous à moitié levés.
 
       Ce paiement a trouvé un défaut qu'aucun test contre un faux n'aurait vu :
       la route d'état rend `{id, status}` **sans montant**, donc un succès en
-      sortait avec `montant: 0` — et `reconcilier` achète du temps avec ce
-      montant. Corrigé en 0.22.1.
+      sortait avec `montant: 0`. Corrigé en 0.22.1.
+
+      **Ce paragraphe a surestimé la portée du défaut jusqu'à la 0.24.4.** Il
+      ajoutait que « `reconcilier` achète du temps avec ce montant ». C'est
+      faux, et c'est vérifiable : `reconcilier` refuse un montant nul depuis la
+      **0.3.0** — `fb7959f`, 3 septembre 2026, onze jours avant la mesure — et
+      rend un `INCIDENT`, traduit en `REFUSE` motivé par `intervention.ts`.
+
+      La conséquence réelle n'est pas un crédit silencieux de zéro jour : c'est
+      **un abonné qui a payé et qui se fait refuser**, dont l'accès ne rouvre
+      pas tant que personne ne traite l'incident. Aussi cassé, plus visible.
+
+      Pourquoi l'affirmation a tenu onze jours dans trois fichiers : **la garde
+      de `reconcilier` n'avait aucun test.** Un faux qu'on écrit ne dément
+      jamais son auteur — un test absent non plus. Il en existe un depuis la
+      0.24.4.
 
 - [ ] **lomi.** Le premier adaptateur **écrit après avoir appelé l'API**, et non
       d'après une documentation. Douze vérifications contre le vrai bac à sable,

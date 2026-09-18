@@ -222,6 +222,36 @@ describe("ce qui ne concorde pas", () => {
     expect(d.faire === "INCIDENT" && d.motif).toContain("GHS");
   });
 
+  it("refuse un succès sans montant, et ne crédite donc aucun jour", async () => {
+    /**
+     * ──────────────────────────────────────────────────────────────────────
+     * LE TEST QUI MANQUAIT, ET CE QU'IL A DÉMENTI
+     *
+     * La garde `montant <= 0` existe depuis la 0.3.0 (fb7959f, 3 septembre
+     * 2026). Elle n'avait jamais été éprouvée — et pendant ce temps, trois
+     * endroits du dépôt affirmaient le contraire de ce qu'elle fait :
+     * « `reconcilier` achète du temps avec ce montant ».
+     *
+     * Rien ne pouvait le démentir. **Un test absent ne contredit pas plus son
+     * auteur qu'un faux qu'on a écrit soi-même** — et l'affirmation a tenu
+     * onze jours dans un commentaire, un test et une page de relevé.
+     *
+     * Le cas vient du réel : la route d'état de Bictorys rend `succeeded`
+     * sans montant (mesuré le 14 septembre 2026), donc `constater` en tirait
+     * un `REUSSI` à zéro franc.
+     */
+    const f = faussesCreances();
+    const d = await reconcilier(
+      f.creances,
+      abonnement(),
+      issue({ montant: 0 }),
+      "CREDIT",
+    );
+
+    expect(d.faire).toBe("INCIDENT");
+    expect(d.faire === "INCIDENT" && d.motif).toContain("Montant nul");
+  });
+
   it("refuse un versement portant la clé d'un autre cycle", async () => {
     const f = faussesCreances();
     const d = await reconcilier(

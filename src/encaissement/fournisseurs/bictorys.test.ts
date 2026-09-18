@@ -243,9 +243,12 @@ describe("bictorys — constater", () => {
    * Trouvé par un vrai paiement, le 14 septembre 2026, et par rien d'autre.
    *
    * `/status` rend `{id, status}` et rien de plus — ni montant ni horodatage.
-   * Un `REUSSI` en sortirait donc avec `montant: 0`, et `reconcilier` achète du
-   * temps avec ce montant : l'abonné aurait payé, le fournisseur l'aurait
-   * confirmé, et le cycle n'aurait pas avancé d'un jour.
+   * Un `REUSSI` en sortirait donc avec `montant: 0`.
+   *
+   * Ce commentaire ajoutait, jusqu'à la 0.24.4, que « `reconcilier` achète du
+   * temps avec ce montant ». C'était faux : `reconcilier` refuse un montant nul
+   * depuis la 0.3.0 et rend un `INCIDENT`. L'abonné qui a payé n'est donc pas
+   * ignoré — il est **refusé**, ce qui est plus visible et tout aussi cassé.
    */
   it("complète par la liste un succès rendu sans montant", async () => {
     const { http, vues } = fauxHttp([
