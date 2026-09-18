@@ -117,14 +117,16 @@ lu : [lomi.](docs/lomi.md) et [π-SPI](docs/pi-spi.md).
 
 C'est la page qu'il faut lire avant de faire confiance à ce paquet.
 
-**Huit cent vingt tests passent. Ils tournent presque tous contre des faux que
+**Plus de huit cents tests passent. Ils tournent presque tous contre des faux que
 j'ai écrits — et un faux ne dément jamais son auteur.** Chaque défaut sérieux de
 ce dépôt a été trouvé ailleurs : par de vraies clés, une vraie boîte aux lettres,
 un vrai téléphone, un vrai webhook, ou une relecture extérieure.
 
-**Cinq adaptateurs de paiement sur huit ont parlé à leur fournisseur.**
-Flutterwave, Paystack, lomi. et Bictorys l'ont fait ; MTN jamais. Des cinq
-passerelles d'envoi, trois ont émis pour de vrai ; Twilio et Expo jamais.
+**Quatre adaptateurs de paiement sur cinq ont parlé à leur fournisseur.**
+Flutterwave, Paystack, lomi. et Bictorys l'ont fait ; MTN jamais. S'y ajoutent
+quatre fondations — Orange, Wave, Moov et Djamo — qui déclarent leurs champs sans
+avoir d'adaptateur à éprouver. Des cinq passerelles d'envoi, trois ont émis pour
+de vrai ; Twilio et Expo jamais.
 
 **Le paquet n'est pas publié sur npm**, et il ne le sera pas avant que cette
 liste soit vide. Le détail, avec les dates et ce que chaque essai a démenti, est

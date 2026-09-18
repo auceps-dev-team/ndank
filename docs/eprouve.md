@@ -11,8 +11,9 @@
 **Le paquet n'est pas publié sur npm, et il ne le sera pas avant que cette liste
 soit vide.**
 
-745 tests passent. Ils tournent presque tous contre des faux que j'ai écrits —
-et un faux ne dément jamais son auteur. Chaque ligne non cochée est un pari.
+823 tests passent — mesuré le 18 septembre 2026, 39 fichiers, zéro échec. Ils
+tournent presque tous contre des faux que j'ai écrits — et un faux ne dément
+jamais son auteur. Chaque ligne non cochée est un pari.
 
 **Quatre l'ont été le 4 septembre 2026**, en installant `ndank` dans
 [Baobart](https://github.com/auceps-dev-team/Baobart) et en appliquant son

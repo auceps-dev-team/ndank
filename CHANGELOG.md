@@ -6,6 +6,47 @@ le reste.
 
 ---
 
+## 0.24.3
+
+### Corrigé — la page qui dit ce qui est éprouvé surestimait ce qui l'est
+
+Le README annonçait :
+
+> **Cinq adaptateurs de paiement sur huit ont parlé à leur fournisseur.**
+> Flutterwave, Paystack, lomi. et Bictorys l'ont fait ; MTN jamais.
+
+La phrase se contredit dans sa propre longueur : elle annonce cinq, en nomme
+quatre, puis dit que le cinquième ne l'a jamais fait. Et le dénominateur était
+faux dans les deux lectures possibles — `NomFournisseur` déclare **neuf**
+fournisseurs, dont **cinq** adaptateurs (Flutterwave, Paystack, lomi., Bictorys,
+MTN) et quatre fondations, qui n'ont pas d'adaptateur à éprouver.
+
+Le compte juste est **quatre sur cinq**.
+
+Ce n'est pas une coquille de comptage. C'est une surestimation, dans le
+paragraphe dont le seul rôle est de dire ce qu'on a le droit de croire — celui
+qu'on lit avant de faire confiance au paquet. Personne ne l'a écrit faux : il
+datait d'un état où le décompte tenait, et il a dérivé pendant que les
+adaptateurs s'ajoutaient.
+
+### Corrigé — deux nombres de tests périmés
+
+`docs/eprouve.md` annonçait 745 tests ; il y en a **823**, mesuré le 18 septembre
+2026 sur 39 fichiers, zéro échec. Le README en annonçait 820.
+
+Les deux chiffres ne sont pas traités de la même façon, et c'est délibéré :
+
+- `docs/eprouve.md` est la page de relevé — elle porte le nombre exact **et sa
+  date**, comme toutes les autres mesures qu'elle contient ;
+- le README passe à « plus de huit cents », la forme que `CONTRIBUTING.md`
+  employait déjà et qui ne périme pas.
+
+Un nombre précis dans une prose que personne ne pense à rouvrir redevient faux la
+semaine suivante. Il n'a sa place que là où l'on écrit aussi **quand** il a été
+mesuré.
+
+---
+
 ## 0.24.2
 
 ### Documenté — un receveur ne doit rendre aucun champ obligatoire
